@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 
 import { BarList } from "@/components/dashboard/bar-list";
+import { TabbedBarCard } from "@/components/dashboard/tabbed-bar-card";
 import { StatTile } from "@/components/dashboard/stat-tile";
 import { VisitorsChart } from "@/components/dashboard/visitors-chart";
 import { Badge } from "@/components/ui/badge";
@@ -64,7 +65,7 @@ export default async function DashboardPage() {
               {greetingName ? `Welcome back, ${greetingName}` : "Dashboard"}
             </h1>
             <p className="text-sm text-muted-foreground">
-              Live data from Google Analytics
+              Live analytics for your website
               {data ? ` · ${data.range.start} – ${data.range.end}` : ""}
             </p>
           </div>
@@ -107,34 +108,38 @@ export default async function DashboardPage() {
               />
             </div>
 
-            {/* chart + top pages */}
-            <div className="grid gap-4 lg:grid-cols-3">
-              <div className="lg:col-span-2">
-                <VisitorsChart
-                  data={data.visitors}
-                  rangeLabel={`Last ${data.range.days} days`}
-                />
-              </div>
-              <BarList
-                title="Top pages"
-                valueLabel="Views"
-                items={data.topPages}
+            {/* visitors chart — full width */}
+            <VisitorsChart
+              data={data.visitors}
+              rangeLabel={`Last ${data.range.days} days`}
+            />
+
+            {/* traffic sources + geography */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <TabbedBarCard
+                valueLabel="Sessions"
+                tabs={[
+                  { key: "referrers", label: "Referrers", items: data.referrers, showIcons: true, empty: "No referrers yet" },
+                  { key: "campaigns", label: "Campaigns", items: data.campaigns, empty: "No campaign data yet" },
+                  { key: "keywords", label: "Keywords", items: data.keywords, empty: "No keyword data yet" },
+                ]}
+              />
+              <TabbedBarCard
+                valueLabel="Users"
+                tabs={[
+                  { key: "countries", label: "Countries", items: data.countries, empty: "No country data yet" },
+                  { key: "regions", label: "Region", items: data.regions, empty: "No region data yet" },
+                  { key: "cities", label: "City", items: data.cities, empty: "No city data yet" },
+                ]}
               />
             </div>
 
-            {/* referrers + countries */}
-            <div className="grid gap-4 sm:grid-cols-2">
-              <BarList
-                title="Referrers"
-                valueLabel="Sessions"
-                items={data.referrers}
-              />
-              <BarList
-                title="Countries"
-                valueLabel="Users"
-                items={data.countries}
-              />
-            </div>
+            {/* top pages */}
+            <BarList
+              title="Top pages"
+              valueLabel="Views"
+              items={data.topPages}
+            />
           </div>
         ) : null}
       </main>

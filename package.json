@@ -10,6 +10,9 @@
   },
   "dependencies": {
     "@clerk/nextjs": "^7.5.14",
+    "@fortawesome/fontawesome-svg-core": "^7.3.0",
+    "@fortawesome/free-brands-svg-icons": "^7.3.0",
+    "@fortawesome/react-fontawesome": "^3.4.0",
     "@google-analytics/data": "^6.1.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

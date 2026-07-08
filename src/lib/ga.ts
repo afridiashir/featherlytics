@@ -3,6 +3,7 @@ import { cache } from "react";
 import { BetaAnalyticsDataClient } from "@google-analytics/data";
 
 import { formatDuration, formatNumber, formatPercent } from "./format";
+import { prettifyReferrer, referrerToDomain } from "./referrer";
 
 /* ------------------------------------------------------------------ */
 /* Client                                                              */
@@ -57,6 +58,8 @@ export type BarItem = {
   display: string;
   /** width percentage relative to the largest item in the list */
   pct: number;
+  /** optional domain for a favicon (referrers); null = direct/unknown */
+  domain?: string | null;
 };
 
 export type Analytics = {
@@ -71,7 +74,11 @@ export type Analytics = {
   visitors: TimePoint[];
   topPages: BarItem[];
   referrers: BarItem[];
+  campaigns: BarItem[];
+  keywords: BarItem[];
   countries: BarItem[];
+  regions: BarItem[];
+  cities: BarItem[];
 };
 
 /* ------------------------------------------------------------------ */
@@ -101,7 +108,12 @@ function parseGaDate(raw: string): { date: string; label: string; sort: number }
 }
 
 function toBarList(
-  rows: { label: string; value: number; display?: string }[],
+  rows: {
+    label: string;
+    value: number;
+    display?: string;
+    domain?: string | null;
+  }[],
 ): BarItem[] {
   const max = Math.max(1, ...rows.map((r) => r.value));
   return rows.map((r) => ({
@@ -109,6 +121,7 @@ function toBarList(
     value: r.value,
     display: r.display ?? formatNumber(r.value),
     pct: Math.round((r.value / max) * 100),
+    domain: r.domain,
   }));
 }
 
@@ -131,7 +144,11 @@ export const getAnalytics = cache(async (): Promise<Analytics> => {
     [seriesRes],
     [pagesRes],
     [referrersRes],
+    [campaignsRes],
+    [keywordsRes],
     [countriesRes],
+    [regionsRes],
+    [citiesRes],
   ] = await Promise.all([
     client.runReport({
       property,
@@ -170,7 +187,39 @@ export const getAnalytics = cache(async (): Promise<Analytics> => {
     client.runReport({
       property,
       dateRanges,
+      dimensions: [{ name: "sessionCampaignName" }],
+      metrics: [{ name: "sessions" }],
+      orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
+      limit: 8,
+    }),
+    client.runReport({
+      property,
+      dateRanges,
+      dimensions: [{ name: "sessionManualTerm" }],
+      metrics: [{ name: "sessions" }],
+      orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
+      limit: 8,
+    }),
+    client.runReport({
+      property,
+      dateRanges,
       dimensions: [{ name: "country" }],
+      metrics: [{ name: "activeUsers" }],
+      orderBys: [{ metric: { metricName: "activeUsers" }, desc: true }],
+      limit: 8,
+    }),
+    client.runReport({
+      property,
+      dateRanges,
+      dimensions: [{ name: "region" }],
+      metrics: [{ name: "activeUsers" }],
+      orderBys: [{ metric: { metricName: "activeUsers" }, desc: true }],
+      limit: 8,
+    }),
+    client.runReport({
+      property,
+      dateRanges,
+      dimensions: [{ name: "city" }],
       metrics: [{ name: "activeUsers" }],
       orderBys: [{ metric: { metricName: "activeUsers" }, desc: true }],
       limit: 8,
@@ -208,14 +257,46 @@ export const getAnalytics = cache(async (): Promise<Analytics> => {
   );
 
   const referrers = toBarList(
-    (referrersRes.rows ?? []).map((row) => ({
-      label: row.dimensionValues?.[0]?.value || "(direct)",
+    (referrersRes.rows ?? []).map((row) => {
+      const raw = row.dimensionValues?.[0]?.value || "(direct)";
+      return {
+        label: prettifyReferrer(raw),
+        value: Number(row.metricValues?.[0]?.value ?? 0),
+        domain: referrerToDomain(raw),
+      };
+    }),
+  );
+
+  const campaigns = toBarList(
+    (campaignsRes.rows ?? []).map((row) => ({
+      label: row.dimensionValues?.[0]?.value || "(not set)",
+      value: Number(row.metricValues?.[0]?.value ?? 0),
+    })),
+  );
+
+  const keywords = toBarList(
+    (keywordsRes.rows ?? []).map((row) => ({
+      label: row.dimensionValues?.[0]?.value || "(not set)",
       value: Number(row.metricValues?.[0]?.value ?? 0),
     })),
   );
 
   const countries = toBarList(
     (countriesRes.rows ?? []).map((row) => ({
+      label: row.dimensionValues?.[0]?.value || "(unknown)",
+      value: Number(row.metricValues?.[0]?.value ?? 0),
+    })),
+  );
+
+  const regions = toBarList(
+    (regionsRes.rows ?? []).map((row) => ({
+      label: row.dimensionValues?.[0]?.value || "(unknown)",
+      value: Number(row.metricValues?.[0]?.value ?? 0),
+    })),
+  );
+
+  const cities = toBarList(
+    (citiesRes.rows ?? []).map((row) => ({
       label: row.dimensionValues?.[0]?.value || "(unknown)",
       value: Number(row.metricValues?.[0]?.value ?? 0),
     })),
@@ -240,6 +321,10 @@ export const getAnalytics = cache(async (): Promise<Analytics> => {
     visitors,
     topPages,
     referrers,
+    campaigns,
+    keywords,
     countries,
+    regions,
+    cities,
   };
 });

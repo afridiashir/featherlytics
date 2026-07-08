@@ -9,7 +9,7 @@ const PB = 26;
 
 export function VisitorsChart({
   data,
-  title = "Unique visitors",
+  title = "Visitors",
   rangeLabel,
 }: {
   data: TimePoint[];
