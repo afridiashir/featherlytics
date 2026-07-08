@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { Show, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
 import {
   ArrowRight,
   Check,
@@ -355,10 +357,22 @@ export default function Home() {
             </a>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" className="hidden sm:inline-flex">
-              Live demo
-            </Button>
-            <Button size="sm">Get Started Free</Button>
+            <Show when="signed-out">
+              <SignInButton mode="modal">
+                <Button variant="ghost" size="sm" className="hidden sm:inline-flex">
+                  Sign in
+                </Button>
+              </SignInButton>
+              <SignUpButton mode="modal">
+                <Button size="sm">Get Started Free</Button>
+              </SignUpButton>
+            </Show>
+            <Show when="signed-in">
+              <Button size="sm" asChild>
+                <Link href="/dashboard">Dashboard</Link>
+              </Button>
+              <UserButton />
+            </Show>
           </div>
         </nav>
       </header>
@@ -390,12 +404,26 @@ export default function Home() {
               bloated script slowing down your site.
             </p>
             <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row">
-              <Button size="lg" className="gap-2">
-                Get Started Free
-                <ArrowRight className="size-4" aria-hidden />
-              </Button>
-              <Button size="lg" variant="ghost" className="gap-1 text-muted-foreground">
-                See a live demo <ArrowRight className="size-4" aria-hidden />
+              <Show when="signed-out">
+                <SignUpButton mode="modal">
+                  <Button size="lg" className="gap-2">
+                    Get Started Free
+                    <ArrowRight className="size-4" aria-hidden />
+                  </Button>
+                </SignUpButton>
+              </Show>
+              <Show when="signed-in">
+                <Button size="lg" className="gap-2" asChild>
+                  <Link href="/dashboard">
+                    Go to Dashboard
+                    <ArrowRight className="size-4" aria-hidden />
+                  </Link>
+                </Button>
+              </Show>
+              <Button size="lg" variant="ghost" className="gap-1 text-muted-foreground" asChild>
+                <Link href="/dashboard">
+                  See a live demo <ArrowRight className="size-4" aria-hidden />
+                </Link>
               </Button>
             </div>
             <p className="mt-3 text-xs text-muted-foreground">
@@ -656,9 +684,20 @@ export default function Home() {
               Stop digging through reports. Start seeing your traffic.
             </h2>
             <div className="relative mt-8 flex flex-col items-center gap-3">
-              <Button size="lg" variant="secondary" className="gap-2">
-                Get Started Free <ArrowRight className="size-4" aria-hidden />
-              </Button>
+              <Show when="signed-out">
+                <SignUpButton mode="modal">
+                  <Button size="lg" variant="secondary" className="gap-2">
+                    Get Started Free <ArrowRight className="size-4" aria-hidden />
+                  </Button>
+                </SignUpButton>
+              </Show>
+              <Show when="signed-in">
+                <Button size="lg" variant="secondary" className="gap-2" asChild>
+                  <Link href="/dashboard">
+                    Go to Dashboard <ArrowRight className="size-4" aria-hidden />
+                  </Link>
+                </Button>
+              </Show>
               <span className="text-sm text-primary-foreground/70">
                 No credit card required
               </span>

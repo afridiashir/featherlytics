@@ -1,0 +1,143 @@
+import Link from "next/link";
+import { UserButton } from "@clerk/nextjs";
+import { currentUser } from "@clerk/nextjs/server";
+import {
+  AlertTriangle,
+  Clock,
+  Eye,
+  Feather,
+  MousePointerClick,
+  Users,
+} from "lucide-react";
+
+import { BarList } from "@/components/dashboard/bar-list";
+import { StatTile } from "@/components/dashboard/stat-tile";
+import { VisitorsChart } from "@/components/dashboard/visitors-chart";
+import { Badge } from "@/components/ui/badge";
+import { getAnalytics, type Analytics } from "@/lib/ga";
+
+export const dynamic = "force-dynamic";
+export const metadata = { title: "Dashboard · Featherlytics" };
+
+export default async function DashboardPage() {
+  const user = await currentUser();
+
+  let data: Analytics | null = null;
+  let error: string | null = null;
+  try {
+    data = await getAnalytics();
+  } catch (e) {
+    error = e instanceof Error ? e.message : "Failed to load analytics";
+  }
+
+  const greetingName =
+    user?.firstName || user?.username || user?.emailAddresses?.[0]?.emailAddress;
+
+  return (
+    <div className="flex min-h-svh flex-col bg-muted/30">
+      {/* Top bar */}
+      <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-md">
+        <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4 sm:px-6">
+          <Link href="/" className="flex items-center gap-2 font-semibold">
+            <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <Feather className="size-4" aria-hidden />
+            </span>
+            Featherlytics
+          </Link>
+          <div className="flex items-center gap-4">
+            <Badge variant="secondary" className="hidden gap-1.5 sm:inline-flex">
+              <span className="relative flex size-1.5" aria-hidden>
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
+                <span className="relative inline-flex size-1.5 rounded-full bg-emerald-500" />
+              </span>
+              Live
+            </Badge>
+            <UserButton />
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">
+              {greetingName ? `Welcome back, ${greetingName}` : "Dashboard"}
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Live data from Google Analytics
+              {data ? ` · ${data.range.start} – ${data.range.end}` : ""}
+            </p>
+          </div>
+          <Badge variant="outline">Last {data?.range.days ?? 30} days</Badge>
+        </div>
+
+        {error ? (
+          <div className="flex flex-col items-center gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-10 text-center">
+            <AlertTriangle className="size-8 text-destructive" aria-hidden />
+            <div>
+              <p className="font-medium">Couldn&apos;t load analytics</p>
+              <p className="mt-1 max-w-md text-sm text-muted-foreground">
+                {error}
+              </p>
+            </div>
+          </div>
+        ) : data ? (
+          <div className="flex flex-col gap-4">
+            {/* stat tiles */}
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+              <StatTile
+                icon={Users}
+                label={data.summary.totalVisits.label}
+                value={data.summary.totalVisits.value}
+              />
+              <StatTile
+                icon={Eye}
+                label={data.summary.viewsPerVisit.label}
+                value={data.summary.viewsPerVisit.value}
+              />
+              <StatTile
+                icon={Clock}
+                label={data.summary.avgDuration.label}
+                value={data.summary.avgDuration.value}
+              />
+              <StatTile
+                icon={MousePointerClick}
+                label={data.summary.bounceRate.label}
+                value={data.summary.bounceRate.value}
+              />
+            </div>
+
+            {/* chart + top pages */}
+            <div className="grid gap-4 lg:grid-cols-3">
+              <div className="lg:col-span-2">
+                <VisitorsChart
+                  data={data.visitors}
+                  rangeLabel={`Last ${data.range.days} days`}
+                />
+              </div>
+              <BarList
+                title="Top pages"
+                valueLabel="Views"
+                items={data.topPages}
+              />
+            </div>
+
+            {/* referrers + countries */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <BarList
+                title="Referrers"
+                valueLabel="Sessions"
+                items={data.referrers}
+              />
+              <BarList
+                title="Countries"
+                valueLabel="Users"
+                items={data.countries}
+              />
+            </div>
+          </div>
+        ) : null}
+      </main>
+    </div>
+  );
+}
