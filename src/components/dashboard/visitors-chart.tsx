@@ -1,3 +1,7 @@
+"use client";
+
+import { useRef, useState } from "react";
+
 import { formatNumber } from "@/lib/format";
 import type { TimePoint } from "@/lib/ga";
 
@@ -16,6 +20,9 @@ export function VisitorsChart({
   title?: string;
   rangeLabel?: string;
 }) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [hover, setHover] = useState<number | null>(null);
+
   const hasData = data.length > 1 && data.some((d) => d.value > 0);
 
   const innerW = W - PX * 2;
@@ -39,6 +46,28 @@ export function VisitorsChart({
   const last = pts[pts.length - 1];
   const peak = data.reduce((a, b) => (b.value > a.value ? b : a), data[0]);
 
+  // Map a pointer event to the nearest data point index.
+  function nearestIndex(clientX: number): number | null {
+    const svg = svgRef.current;
+    if (!svg || pts.length === 0) return null;
+    const rect = svg.getBoundingClientRect();
+    if (rect.width === 0) return null;
+    // Convert client X → SVG viewBox X, then to a fractional position in the plot.
+    const svgX = ((clientX - rect.left) / rect.width) * W;
+    const frac = (svgX - PX) / innerW;
+    const idx = Math.round(frac * (data.length - 1));
+    return Math.max(0, Math.min(data.length - 1, idx));
+  }
+
+  const active = hover != null ? pts[hover] : null;
+  // Keep the tooltip inside the chart bounds.
+  const tipW = 96;
+  const tipX = active
+    ? Math.min(Math.max(active.x - tipW / 2, PX), W - PX - tipW)
+    : 0;
+  const tipAbove = active ? active.y > PT + 40 : true;
+  const tipY = active ? (tipAbove ? active.y - 52 : active.y + 12) : 0;
+
   return (
     <div className="rounded-xl border bg-card p-4">
       <div className="mb-1 flex items-baseline justify-between">
@@ -60,10 +89,14 @@ export function VisitorsChart({
         </div>
       ) : (
         <svg
+          ref={svgRef}
           viewBox={`0 0 ${W} ${H}`}
-          className="h-auto w-full"
+          className="h-auto w-full touch-none"
           role="img"
           aria-label={`${title} over time, ${data.length} days`}
+          onPointerMove={(e) => setHover(nearestIndex(e.clientX))}
+          onPointerDown={(e) => setHover(nearestIndex(e.clientX))}
+          onPointerLeave={() => setHover(null)}
         >
           <defs>
             <linearGradient id="fill-visitors" x1="0" y1="0" x2="0" y2="1">
@@ -95,7 +128,8 @@ export function VisitorsChart({
             className="dark:stroke-[#3987e5]"
           />
 
-          {last && (
+          {/* End-of-line marker + label — hidden while hovering to avoid clutter */}
+          {last && !active && (
             <>
               <circle
                 cx={last.x}
@@ -113,6 +147,55 @@ export function VisitorsChart({
               >
                 {formatNumber(last.point.value)}
               </text>
+            </>
+          )}
+
+          {/* Hover crosshair, marker + tooltip */}
+          {active && (
+            <>
+              <line
+                x1={active.x}
+                x2={active.x}
+                y1={PT}
+                y2={H - PB}
+                className="stroke-muted-foreground/40"
+                strokeWidth="1"
+              />
+              <circle
+                cx={active.x}
+                cy={active.y}
+                r="4.5"
+                fill="#2a78d6"
+                className="stroke-background dark:fill-[#3987e5]"
+                strokeWidth="2"
+              />
+              <g pointerEvents="none">
+                <rect
+                  x={tipX}
+                  y={tipY}
+                  width={tipW}
+                  height={40}
+                  rx="6"
+                  className="fill-popover stroke-border"
+                  strokeWidth="1"
+                />
+                <text
+                  x={tipX + tipW / 2}
+                  y={tipY + 16}
+                  textAnchor="middle"
+                  className="fill-muted-foreground text-[10px]"
+                >
+                  {active.point.label}
+                </text>
+                <text
+                  x={tipX + tipW / 2}
+                  y={tipY + 31}
+                  textAnchor="middle"
+                  className="fill-foreground text-[13px] font-semibold tabular-nums"
+                >
+                  {formatNumber(active.point.value)} visitors
+                </text>
+              </g>
             </>
           )}
 
