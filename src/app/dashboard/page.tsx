@@ -10,7 +10,7 @@ import {
   Users,
 } from "lucide-react";
 
-import { BarList } from "@/components/dashboard/bar-list";
+import { GoalsCard } from "@/components/dashboard/goals-card";
 import { TabbedBarCard } from "@/components/dashboard/tabbed-bar-card";
 import { StatTile } from "@/components/dashboard/stat-tile";
 import { VisitorsChart } from "@/components/dashboard/visitors-chart";
@@ -119,7 +119,7 @@ export default async function DashboardPage() {
               <TabbedBarCard
                 valueLabel="Sessions"
                 tabs={[
-                  { key: "referrers", label: "Referrers", items: data.referrers, showIcons: true, empty: "No referrers yet" },
+                  { key: "referrers", label: "Referrers", items: data.referrers, iconKind: "referrer", empty: "No referrers yet" },
                   { key: "campaigns", label: "Campaigns", items: data.campaigns, empty: "No campaign data yet" },
                   { key: "keywords", label: "Keywords", items: data.keywords, empty: "No keyword data yet" },
                 ]}
@@ -134,12 +134,28 @@ export default async function DashboardPage() {
               />
             </div>
 
-            {/* top pages */}
-            <BarList
-              title="Top pages"
-              valueLabel="Views"
-              items={data.topPages}
-            />
+            {/* pages + tech */}
+            <div className="grid gap-4 lg:grid-cols-2">
+              <TabbedBarCard
+                tabs={[
+                  { key: "pages", label: "Pages", items: data.topPages, valueLabel: "Views" },
+                  { key: "entry", label: "Entry", items: data.entryPages, valueLabel: "Sessions", empty: "No entry pages yet" },
+                  { key: "exit", label: "Exit", items: data.exitLinks, valueLabel: "Clicks", empty: "No outbound link clicks yet" },
+                  { key: "hostname", label: "Hostname", items: data.hostnames, valueLabel: "Views", empty: "No hostname data yet" },
+                ]}
+              />
+              <TabbedBarCard
+                valueLabel="Users"
+                tabs={[
+                  { key: "browser", label: "Browser", items: data.browsers, iconKind: "browser", empty: "No browser data yet" },
+                  { key: "os", label: "OS", items: data.operatingSystems, iconKind: "os", empty: "No OS data yet" },
+                  { key: "device", label: "Device", items: data.devices, iconKind: "device", empty: "No device data yet" },
+                ]}
+              />
+            </div>
+
+            {/* goals — per-event line chart + how many times each fired */}
+            <GoalsCard events={data.events} eventSeries={data.eventSeries} />
           </div>
         ) : null}
       </main>

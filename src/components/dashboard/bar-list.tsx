@@ -1,16 +1,25 @@
 import type { BarItem } from "@/lib/ga";
 import { SiteIcon } from "./site-icon";
+import { TechIcon } from "./tech-icon";
+
+/** Which leading icon to render before each row label. */
+export type IconKind = "referrer" | "browser" | "os" | "device";
+
+function LeadingIcon({ kind, item }: { kind: IconKind; item: BarItem }) {
+  if (kind === "referrer") return <SiteIcon domain={item.domain ?? null} />;
+  return <TechIcon kind={kind} label={item.label} />;
+}
 
 /** Just the ranked bar rows (no card chrome) — reused by cards and tabs. */
 export function BarRows({
   items,
   emptyLabel = "No data yet",
-  showIcons = false,
+  iconKind,
 }: {
   items: BarItem[];
   emptyLabel?: string;
-  /** show a favicon (or globe fallback) before each label, using item.domain */
-  showIcons?: boolean;
+  /** show a leading icon before each label (favicon for referrers, brand/device icons for tech) */
+  iconKind?: IconKind;
 }) {
   if (items.length === 0) {
     return (
@@ -32,7 +41,7 @@ export function BarRows({
             aria-hidden
           />
           <span className="relative z-10 flex min-w-0 items-center gap-2 font-medium">
-            {showIcons && <SiteIcon domain={item.domain ?? null} />}
+            {iconKind && <LeadingIcon kind={iconKind} item={item} />}
             <span className="truncate" title={item.label}>
               {item.label}
             </span>
@@ -51,13 +60,13 @@ export function BarList({
   valueLabel,
   items,
   emptyLabel,
-  showIcons = false,
+  iconKind,
 }: {
   title: string;
   valueLabel: string;
   items: BarItem[];
   emptyLabel?: string;
-  showIcons?: boolean;
+  iconKind?: IconKind;
 }) {
   return (
     <div className="rounded-xl border bg-card p-4">
@@ -65,7 +74,7 @@ export function BarList({
         <span className="text-sm font-medium">{title}</span>
         <span className="text-xs text-muted-foreground">{valueLabel}</span>
       </div>
-      <BarRows items={items} emptyLabel={emptyLabel} showIcons={showIcons} />
+      <BarRows items={items} emptyLabel={emptyLabel} iconKind={iconKind} />
     </div>
   );
 }

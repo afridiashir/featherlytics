@@ -73,12 +73,27 @@ export type Analytics = {
   };
   visitors: TimePoint[];
   topPages: BarItem[];
+  entryPages: BarItem[];
+  exitLinks: BarItem[];
+  hostnames: BarItem[];
   referrers: BarItem[];
   campaigns: BarItem[];
   keywords: BarItem[];
   countries: BarItem[];
   regions: BarItem[];
   cities: BarItem[];
+  browsers: BarItem[];
+  operatingSystems: BarItem[];
+  devices: BarItem[];
+  events: BarItem[];
+  eventSeries: EventSeries;
+};
+
+export type EventSeries = {
+  /** short date labels, chronologically ordered */
+  labels: string[];
+  /** one entry per event (top events only), sorted by total desc */
+  series: { name: string; values: number[]; total: number }[];
 };
 
 /* ------------------------------------------------------------------ */
@@ -93,6 +108,20 @@ const MONTHS = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
+
+/** "desktop" → "Desktop", "smart tv" → "Smart Tv" (device categories). */
+function titleCase(s: string): string {
+  return s.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Strip the protocol and decode a URL for display (used by exit links). */
+function prettifyUrl(url: string): string {
+  try {
+    return decodeURIComponent(url).replace(/^https?:\/\//, "");
+  } catch {
+    return url.replace(/^https?:\/\//, "");
+  }
+}
 
 /** GA4 returns dates as "YYYYMMDD" — turn them into iso + short label. */
 function parseGaDate(raw: string): { date: string; label: string; sort: number } {
@@ -143,12 +172,20 @@ export const getAnalytics = cache(async (): Promise<Analytics> => {
     [summaryRes],
     [seriesRes],
     [pagesRes],
+    [entryRes],
+    [exitRes],
+    [hostRes],
     [referrersRes],
     [campaignsRes],
     [keywordsRes],
     [countriesRes],
     [regionsRes],
     [citiesRes],
+    [browsersRes],
+    [osRes],
+    [devicesRes],
+    [eventsRes],
+    [eventTsRes],
   ] = await Promise.all([
     client.runReport({
       property,
@@ -172,6 +209,36 @@ export const getAnalytics = cache(async (): Promise<Analytics> => {
       property,
       dateRanges,
       dimensions: [{ name: "pagePath" }],
+      metrics: [{ name: "screenPageViews" }],
+      orderBys: [{ metric: { metricName: "screenPageViews" }, desc: true }],
+      limit: 8,
+    }),
+    client.runReport({
+      property,
+      dateRanges,
+      dimensions: [{ name: "landingPage" }],
+      metrics: [{ name: "sessions" }],
+      orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
+      limit: 8,
+    }),
+    client.runReport({
+      property,
+      dateRanges,
+      dimensions: [{ name: "linkUrl" }],
+      metrics: [{ name: "eventCount" }],
+      dimensionFilter: {
+        filter: {
+          fieldName: "eventName",
+          stringFilter: { matchType: "EXACT", value: "click" },
+        },
+      },
+      orderBys: [{ metric: { metricName: "eventCount" }, desc: true }],
+      limit: 8,
+    }),
+    client.runReport({
+      property,
+      dateRanges,
+      dimensions: [{ name: "hostName" }],
       metrics: [{ name: "screenPageViews" }],
       orderBys: [{ metric: { metricName: "screenPageViews" }, desc: true }],
       limit: 8,
@@ -224,6 +291,46 @@ export const getAnalytics = cache(async (): Promise<Analytics> => {
       orderBys: [{ metric: { metricName: "activeUsers" }, desc: true }],
       limit: 8,
     }),
+    client.runReport({
+      property,
+      dateRanges,
+      dimensions: [{ name: "browser" }],
+      metrics: [{ name: "activeUsers" }],
+      orderBys: [{ metric: { metricName: "activeUsers" }, desc: true }],
+      limit: 8,
+    }),
+    client.runReport({
+      property,
+      dateRanges,
+      dimensions: [{ name: "operatingSystem" }],
+      metrics: [{ name: "activeUsers" }],
+      orderBys: [{ metric: { metricName: "activeUsers" }, desc: true }],
+      limit: 8,
+    }),
+    client.runReport({
+      property,
+      dateRanges,
+      dimensions: [{ name: "deviceCategory" }],
+      metrics: [{ name: "activeUsers" }],
+      orderBys: [{ metric: { metricName: "activeUsers" }, desc: true }],
+      limit: 8,
+    }),
+    client.runReport({
+      property,
+      dateRanges,
+      dimensions: [{ name: "eventName" }],
+      metrics: [{ name: "eventCount" }],
+      orderBys: [{ metric: { metricName: "eventCount" }, desc: true }],
+      limit: 12,
+    }),
+    client.runReport({
+      property,
+      dateRanges,
+      dimensions: [{ name: "date" }, { name: "eventName" }],
+      metrics: [{ name: "eventCount" }],
+      orderBys: [{ dimension: { dimensionName: "date" } }],
+      limit: 2000,
+    }),
   ]);
 
   // --- summary ---
@@ -251,6 +358,27 @@ export const getAnalytics = cache(async (): Promise<Analytics> => {
   // --- breakdown lists ---
   const topPages = toBarList(
     (pagesRes.rows ?? []).map((row) => ({
+      label: row.dimensionValues?.[0]?.value || "(not set)",
+      value: Number(row.metricValues?.[0]?.value ?? 0),
+    })),
+  );
+
+  const entryPages = toBarList(
+    (entryRes.rows ?? []).map((row) => ({
+      label: row.dimensionValues?.[0]?.value || "(not set)",
+      value: Number(row.metricValues?.[0]?.value ?? 0),
+    })),
+  );
+
+  const exitLinks = toBarList(
+    (exitRes.rows ?? []).map((row) => ({
+      label: prettifyUrl(row.dimensionValues?.[0]?.value || "(not set)"),
+      value: Number(row.metricValues?.[0]?.value ?? 0),
+    })),
+  );
+
+  const hostnames = toBarList(
+    (hostRes.rows ?? []).map((row) => ({
       label: row.dimensionValues?.[0]?.value || "(not set)",
       value: Number(row.metricValues?.[0]?.value ?? 0),
     })),
@@ -302,6 +430,71 @@ export const getAnalytics = cache(async (): Promise<Analytics> => {
     })),
   );
 
+  const browsers = toBarList(
+    (browsersRes.rows ?? []).map((row) => ({
+      label: row.dimensionValues?.[0]?.value || "(unknown)",
+      value: Number(row.metricValues?.[0]?.value ?? 0),
+    })),
+  );
+
+  const operatingSystems = toBarList(
+    (osRes.rows ?? []).map((row) => ({
+      label: row.dimensionValues?.[0]?.value || "(unknown)",
+      value: Number(row.metricValues?.[0]?.value ?? 0),
+    })),
+  );
+
+  const devices = toBarList(
+    (devicesRes.rows ?? []).map((row) => ({
+      label: titleCase(row.dimensionValues?.[0]?.value || "(unknown)"),
+      value: Number(row.metricValues?.[0]?.value ?? 0),
+    })),
+  );
+
+  const events = toBarList(
+    (eventsRes.rows ?? []).map((row) => ({
+      label: row.dimensionValues?.[0]?.value || "(unknown)",
+      value: Number(row.metricValues?.[0]?.value ?? 0),
+    })),
+  );
+
+  // --- per-event daily time series (top 8 events → colored lines) ---
+  const TOP_SERIES = 8;
+  const topEventNames = events.slice(0, TOP_SERIES).map((e) => e.label);
+  const topSet = new Set(topEventNames);
+  const dateMeta = new Map<string, { label: string; sort: number }>();
+  const perEvent = new Map<string, Map<string, number>>();
+  for (const row of eventTsRes.rows ?? []) {
+    const rawDate = row.dimensionValues?.[0]?.value ?? "";
+    const name = row.dimensionValues?.[1]?.value ?? "";
+    if (!topSet.has(name)) continue;
+    if (!dateMeta.has(rawDate)) {
+      const p = parseGaDate(rawDate);
+      dateMeta.set(rawDate, { label: p.label, sort: p.sort });
+    }
+    if (!perEvent.has(name)) perEvent.set(name, new Map());
+    perEvent
+      .get(name)!
+      .set(rawDate, Number(row.metricValues?.[0]?.value ?? 0));
+  }
+  const orderedDates = [...dateMeta.entries()].sort(
+    (a, b) => a[1].sort - b[1].sort,
+  );
+  const eventSeries: EventSeries = {
+    labels: orderedDates.map(([, v]) => v.label),
+    series: topEventNames
+      .filter((name) => perEvent.has(name))
+      .map((name) => {
+        const counts = perEvent.get(name)!;
+        const values = orderedDates.map(([raw]) => counts.get(raw) ?? 0);
+        return {
+          name,
+          values,
+          total: values.reduce((a, b) => a + b, 0),
+        };
+      }),
+  };
+
   return {
     range: {
       start: visitors[0]?.label ?? "",
@@ -320,11 +513,19 @@ export const getAnalytics = cache(async (): Promise<Analytics> => {
     },
     visitors,
     topPages,
+    entryPages,
+    exitLinks,
+    hostnames,
     referrers,
     campaigns,
     keywords,
     countries,
     regions,
     cities,
+    browsers,
+    operatingSystems,
+    devices,
+    events,
+    eventSeries,
   };
 });
