@@ -18,3 +18,16 @@ model GaConnection {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
+
+/// A saved conversion funnel: a custom name + an ordered list of event steps.
+model Funnel {
+  id        String   @id @default(cuid())
+  userId    String // Clerk user id
+  name      String
+  steps     String[] // ordered event names
+  labels    String[] // custom display name per step (same order as steps)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}

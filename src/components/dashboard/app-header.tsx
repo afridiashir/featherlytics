@@ -4,7 +4,7 @@ import { Feather } from "lucide-react";
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard" },
-  { href: "/funnel", label: "Funnel" },
+  { href: "/funnel", label: "Funnels" },
   { href: "/connect", label: "Your websites" },
 ];
 
