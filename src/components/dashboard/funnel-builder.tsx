@@ -2,178 +2,139 @@
 
 import { useState, useTransition } from "react";
 import { ArrowDown, ArrowUp, Check, Loader2, Plus, X } from "lucide-react";
+import { toast } from "sonner";
 
-import { runFunnelAction, saveFunnelAction } from "@/app/funnel/actions";
+import { saveFunnelAction, updateFunnelAction } from "@/app/funnel/actions";
 import { Button } from "@/components/ui/button";
-import { formatNumber } from "@/lib/format";
-import type { FunnelStepResult } from "@/lib/ga";
 import type { FunnelStep } from "@/lib/funnel-store";
 
 export function FunnelBuilder({
   availableEvents,
   initialSteps,
-  initialResults,
+  funnelId,
+  initialName,
   onSaved,
 }: {
   availableEvents: string[];
   initialSteps: FunnelStep[];
-  initialResults: FunnelStepResult[];
+  /** when set, saving updates this funnel instead of creating a new one */
+  funnelId?: string;
+  initialName?: string;
   onSaved?: () => void;
 }) {
   const [steps, setSteps] = useState<FunnelStep[]>(initialSteps);
-  const [results, setResults] = useState<FunnelStepResult[]>(initialResults);
-  const [pending, start] = useTransition();
-
-  const [name, setName] = useState("");
+  const [name, setName] = useState(initialName ?? "");
   const [saving, startSave] = useTransition();
   const [saved, setSaved] = useState(false);
 
-  // Re-run the funnel report (only the events matter to GA, not the labels).
-  function apply(next: FunnelStep[]) {
-    setSteps(next);
-    setSaved(false);
-    start(async () => {
-      setResults(await runFunnelAction(next.map((s) => s.event)));
-    });
-  }
-
-  const add = (event: string) =>
-    event && apply([...steps, { event, label: "" }]);
-  const remove = (i: number) => apply(steps.filter((_, idx) => idx !== i));
+  const touch = () => setSaved(false);
+  const add = (event: string) => {
+    if (event) {
+      setSteps((cur) => [...cur, { event, label: "" }]);
+      touch();
+    }
+  };
+  const remove = (i: number) => {
+    setSteps((cur) => cur.filter((_, idx) => idx !== i));
+    touch();
+  };
   const move = (i: number, dir: -1 | 1) => {
     const j = i + dir;
     if (j < 0 || j >= steps.length) return;
-    const next = [...steps];
-    [next[i], next[j]] = [next[j], next[i]];
-    apply(next);
+    setSteps((cur) => {
+      const next = [...cur];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+    touch();
   };
-  // Editing a label doesn't change the GA query, so no re-fetch.
   const setLabel = (i: number, label: string) => {
     setSteps((cur) => cur.map((s, idx) => (idx === i ? { ...s, label } : s)));
-    setSaved(false);
+    touch();
   };
 
   function save() {
     if (steps.length < 2 || !name.trim()) return;
     startSave(async () => {
-      await saveFunnelAction(name, steps);
-      setName("");
-      setSaved(true);
-      onSaved?.();
+      const run: Promise<unknown> = funnelId
+        ? updateFunnelAction(funnelId, name, steps)
+        : saveFunnelAction(name, steps);
+      toast.promise(run, {
+        loading: funnelId ? "Saving changes…" : "Creating funnel…",
+        success: funnelId ? "Funnel updated" : "Funnel created",
+        error: "Something went wrong",
+      });
+      try {
+        await run;
+        if (!funnelId) setName("");
+        setSaved(true);
+        onSaved?.();
+      } catch {
+        // error toast already shown by toast.promise
+      }
     });
   }
 
-  const aligned = results.length === steps.length;
-  const first = aligned ? results[0]?.users ?? 0 : 0;
-
   return (
     <div className="flex flex-col gap-4">
-      {/* funnel steps — each row is also the editor */}
-      <div
-        className={`flex flex-col transition-opacity ${pending ? "opacity-60" : ""}`}
-      >
-        {steps.map((step, i) => {
-          const users = aligned ? results[i]?.users ?? 0 : undefined;
-          const prev = aligned && i > 0 ? results[i - 1]?.users ?? 0 : undefined;
-          const pct = users !== undefined && first > 0 ? (users / first) * 100 : 0;
-          const drop =
-            prev !== undefined && users !== undefined && prev > 0
-              ? ((prev - users) / prev) * 100
-              : undefined;
+      {/* steps — event + custom name, reorderable */}
+      <div className="flex flex-col">
+        {steps.map((step, i) => (
+          <div key={`${step.event}-${i}`}>
+            {i > 0 && (
+              <div className="py-1 pl-11 text-muted-foreground">
+                <ArrowDown className="size-3" aria-hidden />
+              </div>
+            )}
+            <div className="flex items-center gap-3">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+                {i + 1}
+              </span>
 
-          return (
-            <div key={`${step.event}-${i}`}>
-              {i > 0 && (
-                <div className="flex items-center gap-2 py-1 pl-11 text-xs text-muted-foreground">
-                  <ArrowDown className="size-3" aria-hidden />
-                  {drop !== undefined ? (
-                    <span>
-                      {drop.toFixed(0)}% drop-off
-                      {prev !== undefined && users !== undefined && (
-                        <span className="text-muted-foreground/70">
-                          {" "}
-                          · {formatNumber(prev - users)} users lost
-                        </span>
-                      )}
-                    </span>
-                  ) : (
-                    <span>—</span>
-                  )}
-                </div>
-              )}
-
-              <div className="flex items-center gap-3">
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-                  {i + 1}
+              <div className="flex h-11 flex-1 items-center gap-2 rounded-lg border bg-background px-3">
+                <input
+                  value={step.label}
+                  onChange={(e) => setLabel(i, e.target.value)}
+                  placeholder={step.event}
+                  className="min-w-0 flex-1 bg-transparent text-sm font-medium outline-none placeholder:font-normal placeholder:text-muted-foreground"
+                  aria-label={`Custom name for ${step.event}`}
+                />
+                <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                  {step.event}
                 </span>
+              </div>
 
-                <div className="relative h-11 flex-1 overflow-hidden rounded-lg border bg-background">
-                  <div
-                    className="absolute inset-y-0 left-0 bg-[#2a78d6]/15 dark:bg-[#3987e5]/20"
-                    style={{ width: `${Math.max(pct, users === 0 ? 0 : 2)}%` }}
-                    aria-hidden
-                  />
-                  <div className="relative flex h-full items-center gap-2 px-3">
-                    <input
-                      value={step.label}
-                      onChange={(e) => setLabel(i, e.target.value)}
-                      placeholder={step.event}
-                      className="min-w-0 flex-1 bg-transparent text-sm font-medium outline-none placeholder:font-normal placeholder:text-muted-foreground"
-                      aria-label={`Custom name for ${step.event}`}
-                    />
-                    <span className="hidden shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground sm:inline">
-                      {step.event}
-                    </span>
-                    <span className="shrink-0 text-sm tabular-nums">
-                      {users === undefined ? (
-                        <span className="text-muted-foreground">…</span>
-                      ) : (
-                        <>
-                          <span className="font-semibold">
-                            {formatNumber(users)}
-                          </span>
-                          <span className="text-muted-foreground">
-                            {" "}
-                            · {pct.toFixed(0)}%
-                          </span>
-                        </>
-                      )}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex shrink-0 items-center">
-                  <button
-                    type="button"
-                    onClick={() => move(i, -1)}
-                    disabled={i === 0}
-                    className="rounded-md p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-30"
-                    aria-label="Move step up"
-                  >
-                    <ArrowUp className="size-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => move(i, 1)}
-                    disabled={i === steps.length - 1}
-                    className="rounded-md p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-30"
-                    aria-label="Move step down"
-                  >
-                    <ArrowDown className="size-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => remove(i)}
-                    className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                    aria-label="Remove step"
-                  >
-                    <X className="size-4" />
-                  </button>
-                </div>
+              <div className="flex shrink-0 items-center">
+                <button
+                  type="button"
+                  onClick={() => move(i, -1)}
+                  disabled={i === 0}
+                  className="rounded-md p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-30"
+                  aria-label="Move step up"
+                >
+                  <ArrowUp className="size-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => move(i, 1)}
+                  disabled={i === steps.length - 1}
+                  className="rounded-md p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-30"
+                  aria-label="Move step down"
+                >
+                  <ArrowDown className="size-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => remove(i)}
+                  className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                  aria-label="Remove step"
+                >
+                  <X className="size-4" />
+                </button>
               </div>
             </div>
-          );
-        })}
+          </div>
+        ))}
       </div>
 
       {steps.length < 2 && (
@@ -227,7 +188,7 @@ export function FunnelBuilder({
           ) : saved ? (
             <Check className="size-4" aria-hidden />
           ) : null}
-          {saved ? "Saved" : "Save funnel"}
+          {saved ? "Saved" : funnelId ? "Save changes" : "Save funnel"}
         </Button>
       </div>
     </div>

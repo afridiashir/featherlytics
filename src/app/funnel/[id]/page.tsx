@@ -1,16 +1,17 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
-import { ArrowLeft, Trash2 } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 
 import { AppHeader } from "@/components/dashboard/app-header";
+import { DeleteFunnelButton } from "@/components/dashboard/delete-funnel-button";
+import { EditFunnelDialog } from "@/components/dashboard/edit-funnel-dialog";
 import { FunnelChart } from "@/components/dashboard/funnel-chart";
 import { FunnelView } from "@/components/dashboard/funnel-view";
 import { Badge } from "@/components/ui/badge";
 import { formatNumber } from "@/lib/format";
 import { getFunnel, type FunnelStep } from "@/lib/funnel-store";
-import { NotConnectedError, runFunnel } from "@/lib/ga";
-import { deleteFunnelAction } from "../actions";
+import { getEventNames, NotConnectedError, runFunnel } from "@/lib/ga";
 
 export const dynamic = "force-dynamic";
 
@@ -35,8 +36,10 @@ export default async function FunnelDetailPage({
   if (!funnel) notFound();
 
   let results: { name: string; users: number }[] = [];
+  let events: string[] = [];
   try {
     results = await runFunnel(funnel.steps.map((s) => s.event));
+    events = await getEventNames();
   } catch (e) {
     if (e instanceof NotConnectedError) redirect("/connect");
   }
@@ -72,16 +75,20 @@ export default async function FunnelDetailPage({
               {funnel.steps.length} steps · last 30 days
             </p>
           </div>
-          <form action={deleteFunnelAction.bind(null, funnel.id)}>
-            <button
-              type="submit"
-              className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-              aria-label={`Delete ${funnel.name}`}
-            >
-              <Trash2 className="size-3.5" aria-hidden />
-              Delete
-            </button>
-          </form>
+          <div className="flex shrink-0 items-center gap-2">
+            <EditFunnelDialog
+              funnelId={funnel.id}
+              name={funnel.name}
+              availableEvents={events}
+              initialSteps={funnel.steps}
+            />
+            <DeleteFunnelButton
+              id={funnel.id}
+              name={funnel.name}
+              variant="button"
+              redirectTo="/funnel"
+            />
+          </div>
         </div>
 
         {/* summary */}

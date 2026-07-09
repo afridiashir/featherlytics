@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Google_Sans, Geist_Mono } from "next/font/google";
 import NextTopLoader from "nextjs-toploader";
+import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
 const googleSans = Google_Sans({
@@ -39,6 +40,7 @@ export default function RootLayout({
             showSpinner={false}
           />
           {children}
+          <Toaster />
         </body>
       </html>
     </ClerkProvider>

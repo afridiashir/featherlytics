@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
-import { ChevronRight, Filter, Trash2 } from "lucide-react";
+import { ChevronRight, Filter } from "lucide-react";
 
 import { AppHeader } from "@/components/dashboard/app-header";
+import { DeleteFunnelButton } from "@/components/dashboard/delete-funnel-button";
 import { NewFunnelDialog } from "@/components/dashboard/new-funnel-dialog";
-import { getEventNames, NotConnectedError, runFunnel } from "@/lib/ga";
+import { getEventNames, NotConnectedError } from "@/lib/ga";
 import { listFunnels, type FunnelStep } from "@/lib/funnel-store";
-import { deleteFunnelAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Funnels · Featherlytics" };
@@ -42,8 +42,6 @@ export default async function FunnelPage() {
     event,
     label: "",
   }));
-  const initialResults =
-    initialEvents.length >= 2 ? await runFunnel(initialEvents) : [];
 
   // List only — no per-funnel GA calls here (data lives on each funnel's page).
   const funnels = userId ? await listFunnels(userId) : [];
@@ -66,7 +64,6 @@ export default async function FunnelPage() {
             <NewFunnelDialog
               availableEvents={events}
               initialSteps={initialSteps}
-              initialResults={initialResults}
             />
           )}
         </div>
@@ -98,15 +95,7 @@ export default async function FunnelPage() {
                     </div>
                   </Link>
                   <div className="flex shrink-0 items-center gap-1">
-                    <form action={deleteFunnelAction.bind(null, f.id)}>
-                      <button
-                        type="submit"
-                        className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                        aria-label={`Delete ${f.name}`}
-                      >
-                        <Trash2 className="size-4" aria-hidden />
-                      </button>
-                    </form>
+                    <DeleteFunnelButton id={f.id} name={f.name} />
                     <Link
                       href={`/funnel/${f.id}`}
                       className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"

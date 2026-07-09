@@ -38,6 +38,22 @@ export async function createFunnel(
   return { id: row.id, name: row.name, steps: zip(row.steps, row.labels) };
 }
 
+export async function updateFunnel(
+  userId: string,
+  id: string,
+  name: string,
+  steps: FunnelStep[],
+): Promise<void> {
+  await prisma.funnel.updateMany({
+    where: { id, userId },
+    data: {
+      name,
+      steps: steps.map((s) => s.event),
+      labels: steps.map((s) => s.label),
+    },
+  });
+}
+
 export async function getFunnel(
   userId: string,
   id: string,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus } from "lucide-react";
+import { Pencil } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -15,10 +15,14 @@ import {
 import { FunnelBuilder } from "./funnel-builder";
 import type { FunnelStep } from "@/lib/funnel-store";
 
-export function NewFunnelDialog({
+export function EditFunnelDialog({
+  funnelId,
+  name,
   availableEvents,
   initialSteps,
 }: {
+  funnelId: string;
+  name: string;
   availableEvents: string[];
   initialSteps: FunnelStep[];
 }) {
@@ -27,19 +31,21 @@ export function NewFunnelDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="gap-2">
-          <Plus className="size-4" aria-hidden />
-          New funnel
+        <Button variant="outline" size="sm" className="gap-1.5">
+          <Pencil className="size-3.5" aria-hidden />
+          Edit
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>New funnel</DialogTitle>
+          <DialogTitle>Edit funnel</DialogTitle>
           <DialogDescription>
-            Add events as steps, give each a custom name, then save.
+            Update the steps or names, then save your changes.
           </DialogDescription>
         </DialogHeader>
         <FunnelBuilder
+          funnelId={funnelId}
+          initialName={name}
           availableEvents={availableEvents}
           initialSteps={initialSteps}
           onSaved={() => setOpen(false)}
