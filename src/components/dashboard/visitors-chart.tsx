@@ -42,14 +42,19 @@ export function VisitorsChart({
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<number | null>(null);
 
-  const hasData = data.length > 1 && data.some((d) => d.value > 0);
+  const hasData = data.length >= 1 && data.some((d) => d.value > 0);
 
   const innerW = W - PX * 2;
   const innerH = H - PT - PB;
   const max = Math.max(1, ...data.map((d) => d.value));
 
+  // A single point (e.g. the "Today" range) has no line to draw — center it
+  // instead of pinning it to the left edge.
   const pts = data.map((d, i) => ({
-    x: PX + (i / Math.max(1, data.length - 1)) * innerW,
+    x:
+      data.length === 1
+        ? PX + innerW / 2
+        : PX + (i / Math.max(1, data.length - 1)) * innerW,
     y: PT + innerH - (d.value / max) * innerH,
     point: d,
   }));

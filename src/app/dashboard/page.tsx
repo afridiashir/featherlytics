@@ -3,23 +3,30 @@ import { currentUser } from "@clerk/nextjs/server";
 import { AlertTriangle, Clock, Eye, MousePointerClick, Users } from "lucide-react";
 
 import { AppHeader } from "@/components/dashboard/app-header";
+import { DateRangePicker } from "@/components/dashboard/date-range-picker";
 import { GoalsCard } from "@/components/dashboard/goals-card";
 import { TabbedBarCard } from "@/components/dashboard/tabbed-bar-card";
 import { StatTile } from "@/components/dashboard/stat-tile";
 import { VisitorsChart } from "@/components/dashboard/visitors-chart";
-import { Badge } from "@/components/ui/badge";
+import { resolveDateRange } from "@/lib/date-range";
 import { getAnalytics, NotConnectedError, type Analytics } from "@/lib/ga";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Dashboard · Featherlytics" };
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ range?: string; from?: string; to?: string }>;
+}) {
   const user = await currentUser();
+  const params = await searchParams;
+  const range = resolveDateRange(params);
 
   let data: Analytics | null = null;
   let error: string | null = null;
   try {
-    data = await getAnalytics();
+    data = await getAnalytics(range.startDate, range.endDate, range.days, range.preset);
   } catch (e) {
     if (e instanceof NotConnectedError) redirect("/connect");
     error = e instanceof Error ? e.message : "Failed to load analytics";
@@ -33,7 +40,7 @@ export default async function DashboardPage() {
       <AppHeader active="/dashboard" />
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
-        <div className="mb-6 flex flex-wrap items-end justify-between gap-2">
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">
               {greetingName ? `Welcome back, ${greetingName}` : "Dashboard"}
@@ -43,7 +50,7 @@ export default async function DashboardPage() {
               {data ? ` · ${data.range.start} – ${data.range.end}` : ""}
             </p>
           </div>
-          <Badge variant="outline">Last {data?.range.days ?? 30} days</Badge>
+          <DateRangePicker />
         </div>
 
         {error ? (
@@ -85,7 +92,7 @@ export default async function DashboardPage() {
             {/* visitors chart — full width */}
             <VisitorsChart
               data={data.visitors}
-              rangeLabel={`Last ${data.range.days} days`}
+              rangeLabel={range.label}
             />
 
             {/* traffic sources + geography */}
@@ -129,7 +136,11 @@ export default async function DashboardPage() {
             </div>
 
             {/* goals — per-event line chart + how many times each fired */}
-            <GoalsCard events={data.events} eventSeries={data.eventSeries} />
+            <GoalsCard
+              events={data.events}
+              eventSeries={data.eventSeries}
+              rangeLabel={range.label}
+            />
           </div>
         ) : null}
       </main>

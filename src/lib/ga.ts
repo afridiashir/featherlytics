@@ -3,6 +3,7 @@ import { cache } from "react";
 import { auth } from "@clerk/nextjs/server";
 import { BetaAnalyticsDataClient, v1alpha } from "@google-analytics/data";
 
+import type { RangePreset } from "./date-range";
 import { formatDuration, formatNumber, formatPercent } from "./format";
 import { getConnection } from "./ga-store";
 import { userAuthClient } from "./ga-oauth";
@@ -27,6 +28,28 @@ type GaContext = {
 
 // Reuse gRPC clients per credential instead of building them every request.
 const contextCache = new Map<string, GaContext>();
+
+/* ------------------------------------------------------------------ */
+/* Cross-request result cache (avoids re-hitting the GA4 quota)        */
+/* ------------------------------------------------------------------ */
+
+const MIN = 60_000;
+// How long a fetched dashboard result stays fresh, per range preset.
+// "Today" changes fastest so it gets the shortest TTL; longer ranges move
+// slower and can be cached longer. Anything else (custom ranges) falls back
+// to the "today" TTL to stay conservative.
+const ANALYTICS_TTL_MS: Record<RangePreset, number> = {
+  today: 30 * MIN,
+  "7d": 3 * 60 * MIN,
+  "30d": 6 * 60 * MIN,
+  custom: 30 * MIN,
+};
+
+type CacheEntry = { value: Analytics; expiresAt: number };
+// In-memory only — resets on process restart and isn't shared across
+// multiple server instances. Fine for a single Node process; swap for a
+// shared store (Redis, etc.) if this ever runs as multiple replicas.
+const analyticsCache = new Map<string, CacheEntry>();
 
 /**
  * Resolve the GA clients + property for the current request from the signed-in
@@ -119,9 +142,9 @@ export type EventSeries = {
 /* Helpers                                                             */
 /* ------------------------------------------------------------------ */
 
-const RANGE_DAYS = 30;
-const START = `${RANGE_DAYS - 1}daysAgo`;
-const END = "today";
+// Fixed 30-day window used by the funnel builder (not yet date-range aware).
+const DEFAULT_START = "29daysAgo";
+const DEFAULT_END = "today";
 
 const MONTHS = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -178,13 +201,18 @@ function toBarList(
 /* ------------------------------------------------------------------ */
 
 /**
- * Fetch the full dashboard dataset from GA4. Deduped per-request with
- * React `cache`. Throws on credential/permission errors — callers should
- * handle it and render a fallback.
+ * Fetch the full dashboard dataset from GA4 for the given date range.
+ * Deduped per-request with React `cache` (keyed on the primitive args).
+ * Throws on credential/permission errors — callers should handle it and
+ * render a fallback.
  */
-export const getAnalytics = cache(async (): Promise<Analytics> => {
+const fetchAnalytics = cache(async (
+  startDate: string,
+  endDate: string,
+  rangeDays: number,
+): Promise<Analytics> => {
   const { data: client, property } = await getGaContext();
-  const dateRanges = [{ startDate: START, endDate: END }];
+  const dateRanges = [{ startDate, endDate }];
 
   const [
     [summaryRes],
@@ -517,7 +545,7 @@ export const getAnalytics = cache(async (): Promise<Analytics> => {
     range: {
       start: visitors[0]?.label ?? "",
       end: visitors[visitors.length - 1]?.label ?? "",
-      days: RANGE_DAYS,
+      days: rangeDays,
     },
     summary: {
       totalVisits: { label: "Total visits", value: formatNumber(sessions) },
@@ -548,6 +576,48 @@ export const getAnalytics = cache(async (): Promise<Analytics> => {
   };
 });
 
+/**
+ * Fetch the dashboard dataset, serving a cached result when one is still
+ * fresh for this GA property + date range. Cache lifetime depends on the
+ * range preset (see ANALYTICS_TTL_MS) — short for "today" since it changes
+ * fast, longer for wider ranges — so repeat dashboard loads don't burn
+ * through the GA4 API quota.
+ */
+export async function getAnalytics(
+  startDate: string,
+  endDate: string,
+  rangeDays: number,
+  preset: RangePreset = "custom",
+): Promise<Analytics> {
+  const { userId } = await auth();
+  if (!userId) throw new NotConnectedError();
+
+  const key = `${userId}:${startDate}:${endDate}`;
+  const now = Date.now();
+  const cached = analyticsCache.get(key);
+  if (cached) {
+    if (cached.expiresAt > now) {
+      const remaining = Math.round((cached.expiresAt - now) / 1000);
+      console.log(`[GA cache] HIT  ${key} (preset=${preset}, expires in ${remaining}s)`);
+      return cached.value;
+    }
+    console.log(`[GA cache] EXPIRED ${key} (preset=${preset}) — refetching`);
+    analyticsCache.delete(key);
+  } else {
+    console.log(`[GA cache] MISS ${key} (preset=${preset}) — refetching`);
+  }
+
+  console.log(`[GA] fetching from GA4 API: startDate=${startDate} endDate=${endDate}`);
+  const t0 = Date.now();
+  const value = await fetchAnalytics(startDate, endDate, rangeDays);
+  console.log(`[GA] fetched from GA4 API in ${Date.now() - t0}ms: ${key}`);
+
+  const ttl = ANALYTICS_TTL_MS[preset];
+  analyticsCache.set(key, { value, expiresAt: now + ttl });
+  console.log(`[GA cache] STORED ${key} (preset=${preset}, ttl=${Math.round(ttl / 1000)}s)`);
+  return value;
+}
+
 /* ------------------------------------------------------------------ */
 /* Funnel                                                              */
 /* ------------------------------------------------------------------ */
@@ -559,7 +629,7 @@ export const getEventNames = cache(async (): Promise<string[]> => {
   const { data: client, property } = await getGaContext();
   const [res] = await client.runReport({
     property,
-    dateRanges: [{ startDate: START, endDate: END }],
+    dateRanges: [{ startDate: DEFAULT_START, endDate: DEFAULT_END }],
     dimensions: [{ name: "eventName" }],
     metrics: [{ name: "eventCount" }],
     orderBys: [{ metric: { metricName: "eventCount" }, desc: true }],
@@ -581,7 +651,7 @@ export async function runFunnel(steps: string[]): Promise<FunnelStepResult[]> {
   const { alpha, property } = await getGaContext();
   const [res] = await alpha.runFunnelReport({
     property,
-    dateRanges: [{ startDate: START, endDate: END }],
+    dateRanges: [{ startDate: DEFAULT_START, endDate: DEFAULT_END }],
     funnel: {
       isOpenFunnel: false,
       steps: clean.map((name) => ({

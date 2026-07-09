@@ -6,16 +6,18 @@ import { EventsChart } from "./events-chart";
 export function GoalsCard({
   events,
   eventSeries,
+  rangeLabel,
 }: {
   events: BarItem[];
   eventSeries: EventSeries;
+  rangeLabel?: string;
 }) {
   return (
     <div className="rounded-xl border bg-card p-4">
       <div className="mb-3 flex items-baseline justify-between">
         <span className="text-sm font-medium">Goals</span>
         <span className="text-xs text-muted-foreground">
-          Events triggered · last 30 days
+          Events triggered{rangeLabel ? ` · ${rangeLabel}` : ""}
         </span>
       </div>
 
