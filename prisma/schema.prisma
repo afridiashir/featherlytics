@@ -1,0 +1,20 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+/// A user's connected Google Analytics account + selected GA4 property.
+model GaConnection {
+  id           String   @id @default(cuid())
+  userId       String   @unique // Clerk user id
+  refreshToken String
+  propertyId   String?
+  propertyName String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}

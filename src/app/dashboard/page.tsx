@@ -61,7 +61,7 @@ export default async function DashboardPage() {
               href="/connect"
               className="hidden text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline"
             >
-              Connect GA
+              Your websites
             </Link>
             <Badge variant="secondary" className="hidden gap-1.5 sm:inline-flex">
               <span className="relative flex size-1.5" aria-hidden>

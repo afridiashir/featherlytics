@@ -9,47 +9,7 @@ import { userAuthClient } from "./ga-oauth";
 import { prettifyReferrer, referrerToDomain } from "./referrer";
 
 /* ------------------------------------------------------------------ */
-/* Client                                                              */
-/* ------------------------------------------------------------------ */
-
-function serviceAccountCredentials() {
-  const raw = process.env.GA4_SERVICE_ACCOUNT_KEY;
-  if (!raw) {
-    throw new Error("GA4_SERVICE_ACCOUNT_KEY environment variable is not set");
-  }
-  const credentials = JSON.parse(raw);
-  // Some env loaders keep the literal "\n"; normalize to real newlines.
-  if (typeof credentials.private_key === "string") {
-    credentials.private_key = credentials.private_key.replace(/\\n/g, "\n");
-  }
-  return credentials;
-}
-
-let cachedClient: BetaAnalyticsDataClient | null = null;
-
-function getClient(): BetaAnalyticsDataClient {
-  if (!cachedClient) {
-    cachedClient = new BetaAnalyticsDataClient({
-      credentials: serviceAccountCredentials(),
-    });
-  }
-  return cachedClient;
-}
-
-// Funnel reports live in the v1alpha surface (runFunnelReport).
-let cachedAlpha: v1alpha.AlphaAnalyticsDataClient | null = null;
-
-function getAlphaClient(): v1alpha.AlphaAnalyticsDataClient {
-  if (!cachedAlpha) {
-    cachedAlpha = new v1alpha.AlphaAnalyticsDataClient({
-      credentials: serviceAccountCredentials(),
-    });
-  }
-  return cachedAlpha;
-}
-
-/* ------------------------------------------------------------------ */
-/* Per-request GA context (per-user OAuth, with service-account fallback) */
+/* Per-request GA context (per-user OAuth — multi-tenant only)         */
 /* ------------------------------------------------------------------ */
 
 export class NotConnectedError extends Error {
@@ -69,41 +29,29 @@ type GaContext = {
 const contextCache = new Map<string, GaContext>();
 
 /**
- * Resolve which GA account + property to query for the current request:
- *   1. the signed-in user's own OAuth connection (multi-tenant), else
- *   2. the env service account + property (transitional single-tenant fallback —
- *      remove this branch for true multi-tenant so users only see their own data).
- * Throws NotConnectedError when neither is available.
+ * Resolve the GA clients + property for the current request from the signed-in
+ * user's own OAuth connection. Throws NotConnectedError when the user hasn't
+ * connected Google Analytics or hasn't picked a property yet.
  */
 async function getGaContext(): Promise<GaContext> {
   const { userId } = await auth();
+  if (!userId) throw new NotConnectedError();
 
-  if (userId) {
-    const conn = await getConnection(userId);
-    if (conn?.refreshToken && conn.propertyId) {
-      const key = `oauth:${conn.refreshToken}:${conn.propertyId}`;
-      const cached = contextCache.get(key);
-      if (cached) return cached;
-      const authClient = userAuthClient(conn.refreshToken) as never;
-      const ctx: GaContext = {
-        data: new BetaAnalyticsDataClient({ authClient }),
-        alpha: new v1alpha.AlphaAnalyticsDataClient({ authClient }),
-        property: `properties/${conn.propertyId}`,
-      };
-      contextCache.set(key, ctx);
-      return ctx;
-    }
-  }
+  const conn = await getConnection(userId);
+  if (!conn?.refreshToken || !conn.propertyId) throw new NotConnectedError();
 
-  if (process.env.GA4_SERVICE_ACCOUNT_KEY && process.env.GA4_PROPERTY_ID) {
-    return {
-      data: getClient(),
-      alpha: getAlphaClient(),
-      property: `properties/${process.env.GA4_PROPERTY_ID}`,
-    };
-  }
+  const key = `${conn.refreshToken}:${conn.propertyId}`;
+  const cached = contextCache.get(key);
+  if (cached) return cached;
 
-  throw new NotConnectedError();
+  const authClient = userAuthClient(conn.refreshToken) as never;
+  const ctx: GaContext = {
+    data: new BetaAnalyticsDataClient({ authClient }),
+    alpha: new v1alpha.AlphaAnalyticsDataClient({ authClient }),
+    property: `properties/${conn.propertyId}`,
+  };
+  contextCache.set(key, ctx);
+  return ctx;
 }
 
 /* ------------------------------------------------------------------ */

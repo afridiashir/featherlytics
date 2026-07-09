@@ -1,7 +1,7 @@
 import "server-only";
-import { clerkClient } from "@clerk/nextjs/server";
+import { prisma } from "./prisma";
 
-/** A user's Google Analytics connection, stored in Clerk privateMetadata. */
+/** A user's Google Analytics connection (Postgres, via Prisma). */
 export type GaConnection = {
   refreshToken?: string;
   propertyId?: string;
@@ -11,20 +11,21 @@ export type GaConnection = {
 export async function getConnection(
   userId: string,
 ): Promise<GaConnection | null> {
-  const client = await clerkClient();
-  const user = await client.users.getUser(userId);
-  const ga = user.privateMetadata?.ga as GaConnection | undefined;
-  return ga ?? null;
-}
-
-async function write(userId: string, ga: GaConnection | null) {
-  const client = await clerkClient();
-  await client.users.updateUserMetadata(userId, { privateMetadata: { ga } });
+  const row = await prisma.gaConnection.findUnique({ where: { userId } });
+  if (!row) return null;
+  return {
+    refreshToken: row.refreshToken,
+    propertyId: row.propertyId ?? undefined,
+    propertyName: row.propertyName ?? undefined,
+  };
 }
 
 export async function saveRefreshToken(userId: string, refreshToken: string) {
-  const existing = (await getConnection(userId)) ?? {};
-  await write(userId, { ...existing, refreshToken });
+  await prisma.gaConnection.upsert({
+    where: { userId },
+    update: { refreshToken },
+    create: { userId, refreshToken },
+  });
 }
 
 export async function saveProperty(
@@ -32,10 +33,12 @@ export async function saveProperty(
   propertyId: string,
   propertyName: string,
 ) {
-  const existing = (await getConnection(userId)) ?? {};
-  await write(userId, { ...existing, propertyId, propertyName });
+  await prisma.gaConnection.update({
+    where: { userId },
+    data: { propertyId, propertyName },
+  });
 }
 
 export async function disconnect(userId: string) {
-  await write(userId, null);
+  await prisma.gaConnection.deleteMany({ where: { userId } });
 }
