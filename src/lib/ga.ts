@@ -1,38 +1,109 @@
 import "server-only";
 import { cache } from "react";
-import { BetaAnalyticsDataClient } from "@google-analytics/data";
+import { auth } from "@clerk/nextjs/server";
+import { BetaAnalyticsDataClient, v1alpha } from "@google-analytics/data";
 
 import { formatDuration, formatNumber, formatPercent } from "./format";
+import { getConnection } from "./ga-store";
+import { userAuthClient } from "./ga-oauth";
 import { prettifyReferrer, referrerToDomain } from "./referrer";
 
 /* ------------------------------------------------------------------ */
 /* Client                                                              */
 /* ------------------------------------------------------------------ */
 
-let cachedClient: BetaAnalyticsDataClient | null = null;
-
-function getClient(): BetaAnalyticsDataClient {
-  if (cachedClient) return cachedClient;
-
+function serviceAccountCredentials() {
   const raw = process.env.GA4_SERVICE_ACCOUNT_KEY;
   if (!raw) {
     throw new Error("GA4_SERVICE_ACCOUNT_KEY environment variable is not set");
   }
-
   const credentials = JSON.parse(raw);
   // Some env loaders keep the literal "\n"; normalize to real newlines.
   if (typeof credentials.private_key === "string") {
     credentials.private_key = credentials.private_key.replace(/\\n/g, "\n");
   }
+  return credentials;
+}
 
-  cachedClient = new BetaAnalyticsDataClient({ credentials });
+let cachedClient: BetaAnalyticsDataClient | null = null;
+
+function getClient(): BetaAnalyticsDataClient {
+  if (!cachedClient) {
+    cachedClient = new BetaAnalyticsDataClient({
+      credentials: serviceAccountCredentials(),
+    });
+  }
   return cachedClient;
 }
 
-function propertyPath(): string {
-  const id = process.env.GA4_PROPERTY_ID;
-  if (!id) throw new Error("GA4_PROPERTY_ID environment variable is not set");
-  return `properties/${id}`;
+// Funnel reports live in the v1alpha surface (runFunnelReport).
+let cachedAlpha: v1alpha.AlphaAnalyticsDataClient | null = null;
+
+function getAlphaClient(): v1alpha.AlphaAnalyticsDataClient {
+  if (!cachedAlpha) {
+    cachedAlpha = new v1alpha.AlphaAnalyticsDataClient({
+      credentials: serviceAccountCredentials(),
+    });
+  }
+  return cachedAlpha;
+}
+
+/* ------------------------------------------------------------------ */
+/* Per-request GA context (per-user OAuth, with service-account fallback) */
+/* ------------------------------------------------------------------ */
+
+export class NotConnectedError extends Error {
+  constructor() {
+    super("Google Analytics is not connected");
+    this.name = "NotConnectedError";
+  }
+}
+
+type GaContext = {
+  data: BetaAnalyticsDataClient;
+  alpha: v1alpha.AlphaAnalyticsDataClient;
+  property: string;
+};
+
+// Reuse gRPC clients per credential instead of building them every request.
+const contextCache = new Map<string, GaContext>();
+
+/**
+ * Resolve which GA account + property to query for the current request:
+ *   1. the signed-in user's own OAuth connection (multi-tenant), else
+ *   2. the env service account + property (transitional single-tenant fallback —
+ *      remove this branch for true multi-tenant so users only see their own data).
+ * Throws NotConnectedError when neither is available.
+ */
+async function getGaContext(): Promise<GaContext> {
+  const { userId } = await auth();
+
+  if (userId) {
+    const conn = await getConnection(userId);
+    if (conn?.refreshToken && conn.propertyId) {
+      const key = `oauth:${conn.refreshToken}:${conn.propertyId}`;
+      const cached = contextCache.get(key);
+      if (cached) return cached;
+      const authClient = userAuthClient(conn.refreshToken) as never;
+      const ctx: GaContext = {
+        data: new BetaAnalyticsDataClient({ authClient }),
+        alpha: new v1alpha.AlphaAnalyticsDataClient({ authClient }),
+        property: `properties/${conn.propertyId}`,
+      };
+      contextCache.set(key, ctx);
+      return ctx;
+    }
+  }
+
+  if (process.env.GA4_SERVICE_ACCOUNT_KEY && process.env.GA4_PROPERTY_ID) {
+    return {
+      data: getClient(),
+      alpha: getAlphaClient(),
+      property: `properties/${process.env.GA4_PROPERTY_ID}`,
+    };
+  }
+
+  throw new NotConnectedError();
 }
 
 /* ------------------------------------------------------------------ */
@@ -164,8 +235,7 @@ function toBarList(
  * handle it and render a fallback.
  */
 export const getAnalytics = cache(async (): Promise<Analytics> => {
-  const client = getClient();
-  const property = propertyPath();
+  const { data: client, property } = await getGaContext();
   const dateRanges = [{ startDate: START, endDate: END }];
 
   const [
@@ -529,3 +599,60 @@ export const getAnalytics = cache(async (): Promise<Analytics> => {
     eventSeries,
   };
 });
+
+/* ------------------------------------------------------------------ */
+/* Funnel                                                              */
+/* ------------------------------------------------------------------ */
+
+export type FunnelStepResult = { name: string; users: number };
+
+/** List distinct event names (most frequent first) for the funnel builder. */
+export const getEventNames = cache(async (): Promise<string[]> => {
+  const { data: client, property } = await getGaContext();
+  const [res] = await client.runReport({
+    property,
+    dateRanges: [{ startDate: START, endDate: END }],
+    dimensions: [{ name: "eventName" }],
+    metrics: [{ name: "eventCount" }],
+    orderBys: [{ metric: { metricName: "eventCount" }, desc: true }],
+    limit: 30,
+  });
+  return (res.rows ?? [])
+    .map((r) => r.dimensionValues?.[0]?.value ?? "")
+    .filter(Boolean);
+});
+
+/**
+ * Run a closed funnel over the given ordered event names and return the
+ * active-user count that reached each step. Needs ≥ 2 steps.
+ */
+export async function runFunnel(steps: string[]): Promise<FunnelStepResult[]> {
+  const clean = steps.filter(Boolean);
+  if (clean.length < 2) return [];
+
+  const { alpha, property } = await getGaContext();
+  const [res] = await alpha.runFunnelReport({
+    property,
+    dateRanges: [{ startDate: START, endDate: END }],
+    funnel: {
+      isOpenFunnel: false,
+      steps: clean.map((name) => ({
+        name,
+        filterExpression: { funnelEventFilter: { eventName: name } },
+      })),
+    },
+  });
+
+  return (res.funnelTable?.rows ?? [])
+    .map((row) => {
+      const raw = row.dimensionValues?.[0]?.value ?? "";
+      const m = raw.match(/^(\d+)\.\s*(.*)$/);
+      return {
+        order: m ? Number(m[1]) : 0,
+        name: m ? m[2] : raw,
+        users: Number(row.metricValues?.[0]?.value ?? 0),
+      };
+    })
+    .sort((a, b) => a.order - b.order)
+    .map(({ name, users }) => ({ name, users }));
+}

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { UserButton } from "@clerk/nextjs";
 import { currentUser } from "@clerk/nextjs/server";
 import {
@@ -15,7 +16,7 @@ import { TabbedBarCard } from "@/components/dashboard/tabbed-bar-card";
 import { StatTile } from "@/components/dashboard/stat-tile";
 import { VisitorsChart } from "@/components/dashboard/visitors-chart";
 import { Badge } from "@/components/ui/badge";
-import { getAnalytics, type Analytics } from "@/lib/ga";
+import { getAnalytics, NotConnectedError, type Analytics } from "@/lib/ga";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Dashboard · Featherlytics" };
@@ -28,6 +29,7 @@ export default async function DashboardPage() {
   try {
     data = await getAnalytics();
   } catch (e) {
+    if (e instanceof NotConnectedError) redirect("/connect");
     error = e instanceof Error ? e.message : "Failed to load analytics";
   }
 
@@ -46,6 +48,21 @@ export default async function DashboardPage() {
             Featherlytics
           </Link>
           <div className="flex items-center gap-4">
+            <Link href="/dashboard" className="text-sm font-medium text-foreground">
+              Dashboard
+            </Link>
+            <Link
+              href="/funnel"
+              className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Funnel
+            </Link>
+            <Link
+              href="/connect"
+              className="hidden text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline"
+            >
+              Connect GA
+            </Link>
             <Badge variant="secondary" className="hidden gap-1.5 sm:inline-flex">
               <span className="relative flex size-1.5" aria-hidden>
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
