@@ -1,8 +1,7 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { UserButton } from "@clerk/nextjs";
-import { Feather, Filter } from "lucide-react";
+import { Filter } from "lucide-react";
 
+import { AppHeader } from "@/components/dashboard/app-header";
 import { FunnelBuilder } from "@/components/dashboard/funnel-builder";
 import { Badge } from "@/components/ui/badge";
 import { getEventNames, NotConnectedError, runFunnel } from "@/lib/ga";
@@ -37,28 +36,7 @@ export default async function FunnelPage() {
 
   return (
     <div className="flex min-h-svh flex-col bg-muted/30">
-      <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-md">
-        <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4 sm:px-6">
-          <Link href="/" className="flex items-center gap-2 font-semibold">
-            <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <Feather className="size-4" aria-hidden />
-            </span>
-            Featherlytics
-          </Link>
-          <nav className="flex items-center gap-4">
-            <Link
-              href="/dashboard"
-              className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-            >
-              Dashboard
-            </Link>
-            <Link href="/funnel" className="text-sm font-medium text-foreground">
-              Funnel
-            </Link>
-            <UserButton />
-          </nav>
-        </div>
-      </header>
+      <AppHeader active="/funnel" />
 
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8 sm:px-6">
         <div className="mb-6">

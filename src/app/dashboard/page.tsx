@@ -1,16 +1,8 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { UserButton } from "@clerk/nextjs";
 import { currentUser } from "@clerk/nextjs/server";
-import {
-  AlertTriangle,
-  Clock,
-  Eye,
-  Feather,
-  MousePointerClick,
-  Users,
-} from "lucide-react";
+import { AlertTriangle, Clock, Eye, MousePointerClick, Users } from "lucide-react";
 
+import { AppHeader } from "@/components/dashboard/app-header";
 import { GoalsCard } from "@/components/dashboard/goals-card";
 import { TabbedBarCard } from "@/components/dashboard/tabbed-bar-card";
 import { StatTile } from "@/components/dashboard/stat-tile";
@@ -38,42 +30,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="flex min-h-svh flex-col bg-muted/30">
-      {/* Top bar */}
-      <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-md">
-        <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4 sm:px-6">
-          <Link href="/" className="flex items-center gap-2 font-semibold">
-            <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <Feather className="size-4" aria-hidden />
-            </span>
-            Featherlytics
-          </Link>
-          <div className="flex items-center gap-4">
-            <Link href="/dashboard" className="text-sm font-medium text-foreground">
-              Dashboard
-            </Link>
-            <Link
-              href="/funnel"
-              className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-            >
-              Funnel
-            </Link>
-            <Link
-              href="/connect"
-              className="hidden text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline"
-            >
-              Your websites
-            </Link>
-            <Badge variant="secondary" className="hidden gap-1.5 sm:inline-flex">
-              <span className="relative flex size-1.5" aria-hidden>
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
-                <span className="relative inline-flex size-1.5 rounded-full bg-emerald-500" />
-              </span>
-              Live
-            </Badge>
-            <UserButton />
-          </div>
-        </div>
-      </header>
+      <AppHeader active="/dashboard" />
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
         <div className="mb-6 flex flex-wrap items-end justify-between gap-2">

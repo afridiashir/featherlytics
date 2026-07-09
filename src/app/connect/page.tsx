@@ -1,8 +1,7 @@
-import Link from "next/link";
 import { auth } from "@clerk/nextjs/server";
-import { UserButton } from "@clerk/nextjs";
-import { AlertTriangle, Feather, Link2 } from "lucide-react";
+import { AlertTriangle, Link2 } from "lucide-react";
 
+import { AppHeader } from "@/components/dashboard/app-header";
 import { PropertyPicker } from "@/components/dashboard/property-picker";
 import { Button } from "@/components/ui/button";
 import { listProperties, type GaProperty } from "@/lib/ga-admin";
@@ -42,17 +41,7 @@ export default async function ConnectPage({
 
   return (
     <div className="flex min-h-svh flex-col bg-muted/30">
-      <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-md">
-        <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4 sm:px-6">
-          <Link href="/" className="flex items-center gap-2 font-semibold">
-            <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <Feather className="size-4" aria-hidden />
-            </span>
-            Featherlytics
-          </Link>
-          <UserButton />
-        </div>
-      </header>
+      <AppHeader active="/connect" />
 
       <main className="mx-auto w-full max-w-xl flex-1 px-4 py-10 sm:px-6">
         <h1 className="text-2xl font-bold tracking-tight">Connect Google Analytics</h1>
