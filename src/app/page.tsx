@@ -146,7 +146,7 @@ function MockDashboard() {
         <span className="size-2.5 rounded-full bg-emerald-400/80" aria-hidden />
         <span className="ml-3 flex items-center gap-1.5 text-xs text-muted-foreground">
           <Feather className="size-3" aria-hidden />
-          featherlytics.io / dashboard
+          easternanalytics.io / dashboard
         </span>
         <Badge variant="secondary" className="ml-auto gap-1.5 text-xs">
           <span className="relative flex size-1.5" aria-hidden>
@@ -343,7 +343,7 @@ export default function Home() {
             <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <Feather className="size-4" aria-hidden />
             </span>
-            Featherlytics
+            Eastern Analytics
           </a>
           <div className="hidden items-center gap-6 text-sm text-muted-foreground sm:flex">
             <a href="#features" className="transition-colors hover:text-foreground">
@@ -398,7 +398,7 @@ export default function Home() {
               </span>
             </h1>
             <p className="mt-6 max-w-2xl text-balance text-lg text-muted-foreground">
-              Featherlytics is a simple, clean dashboard for the numbers that
+              Eastern Analytics is a simple, clean dashboard for the numbers that
               actually matter — visitors, pages, sources, and where
               they&apos;re coming from. No clutter, no learning curve, no
               bloated script slowing down your site.
@@ -451,7 +451,7 @@ export default function Home() {
               segments, custom reports, and a menu three levels deep.
             </p>
             <p className="mt-4 text-lg">
-              <strong>Featherlytics skips all of that.</strong>{" "}
+              <strong>Eastern Analytics skips all of that.</strong>{" "}
               One screen. The
               numbers you check every day, laid out the way you&apos;d sketch
               them on a napkin.
@@ -522,10 +522,10 @@ export default function Home() {
         <section id="compare" className="mx-auto w-full max-w-4xl px-4 py-24 sm:px-6">
           <div className="mx-auto max-w-2xl text-center">
             <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
-              Why Featherlytics
+              Why Eastern Analytics
             </h2>
             <p className="mt-4 text-lg text-muted-foreground">
-              Featherlytics isn&apos;t trying to replace every feature of GA.
+              Eastern Analytics isn&apos;t trying to replace every feature of GA.
               It&apos;s built for the 90% of questions you actually ask,
               answered instantly.
             </p>
@@ -539,7 +539,7 @@ export default function Home() {
                   <th className="p-4 font-semibold">
                     <span className="flex items-center gap-1.5 text-[#2a78d6] dark:text-[#3987e5]">
                       <Feather className="size-4" aria-hidden />
-                      Featherlytics
+                      Eastern Analytics
                     </span>
                   </th>
                 </tr>
@@ -614,7 +614,7 @@ export default function Home() {
                     <span className="text-emerald-400">defer</span>{" "}
                     <span className="text-emerald-400">src</span>=
                     <span className="text-amber-300">
-                      &quot;https://featherlytics.io/f.js&quot;
+                      &quot;https://easternanalytics.io/f.js&quot;
                     </span>
                     {"\n  "}
                     <span className="text-emerald-400">data-site</span>=
@@ -713,7 +713,7 @@ export default function Home() {
         <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-4 px-4 py-10 text-sm text-muted-foreground sm:flex-row sm:px-6">
           <span className="flex items-center gap-2">
             <Feather className="size-4" aria-hidden />
-            Featherlytics — light as a feather, clear as day.
+Eastern Analytics — light as a feather, clear as day.
           </span>
           <div className="flex gap-6">
             <a href="#features" className="transition-colors hover:text-foreground">

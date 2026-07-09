@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Featherlytics",
+  title: "Eastern Analytics",
   description: "Next.js 16 · TypeScript · Tailwind CSS · shadcn/ui",
 };
 

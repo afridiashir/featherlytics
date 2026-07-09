@@ -18,7 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { getAnalytics, type Analytics } from "@/lib/ga";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Dashboard · Featherlytics" };
+export const metadata = { title: "Dashboard · Eastern Analytics" };
 
 export default async function DashboardPage() {
   const user = await currentUser();
@@ -43,7 +43,7 @@ export default async function DashboardPage() {
             <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <Feather className="size-4" aria-hidden />
             </span>
-            Featherlytics
+            Eastern Analytics
           </Link>
           <div className="flex items-center gap-4">
             <Badge variant="secondary" className="hidden gap-1.5 sm:inline-flex">
