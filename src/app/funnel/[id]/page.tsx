@@ -4,11 +4,13 @@ import { auth } from "@clerk/nextjs/server";
 import { ArrowLeft } from "lucide-react";
 
 import { AppHeader } from "@/components/dashboard/app-header";
+import { DateRangePicker } from "@/components/dashboard/date-range-picker";
 import { DeleteFunnelButton } from "@/components/dashboard/delete-funnel-button";
 import { EditFunnelDialog } from "@/components/dashboard/edit-funnel-dialog";
 import { FunnelChart } from "@/components/dashboard/funnel-chart";
 import { FunnelView } from "@/components/dashboard/funnel-view";
 import { Badge } from "@/components/ui/badge";
+import { resolveDateRange } from "@/lib/date-range";
 import { formatNumber } from "@/lib/format";
 import { getFunnel, type FunnelStep } from "@/lib/funnel-store";
 import { getEventNames, NotConnectedError, runFunnel } from "@/lib/ga";
@@ -27,18 +29,27 @@ function withLabels(
 
 export default async function FunnelDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ range?: string; from?: string; to?: string }>;
 }) {
   const { id } = await params;
   const { userId } = await auth();
   const funnel = userId ? await getFunnel(userId, id) : null;
   if (!funnel) notFound();
 
+  const range = resolveDateRange(await searchParams);
+
   let results: { name: string; users: number }[] = [];
   let events: string[] = [];
   try {
-    results = await runFunnel(funnel.steps.map((s) => s.event));
+    results = await runFunnel(
+      funnel.steps.map((s) => s.event),
+      range.startDate,
+      range.endDate,
+      range.preset,
+    );
     events = await getEventNames();
   } catch (e) {
     if (e instanceof NotConnectedError) redirect("/connect");
@@ -68,14 +79,15 @@ export default async function FunnelDetailPage({
           All funnels
         </Link>
 
-        <div className="mb-6 flex items-start justify-between gap-2">
+        <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">{funnel.name}</h1>
             <p className="text-sm text-muted-foreground">
-              {funnel.steps.length} steps · last 30 days
+              {funnel.steps.length} steps · {range.label}
             </p>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <DateRangePicker />
             <EditFunnelDialog
               funnelId={funnel.id}
               name={funnel.name}

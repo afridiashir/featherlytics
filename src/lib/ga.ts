@@ -644,14 +644,18 @@ export const getEventNames = cache(async (): Promise<string[]> => {
  * Run a closed funnel over the given ordered event names and return the
  * active-user count that reached each step. Needs ≥ 2 steps.
  */
-export async function runFunnel(steps: string[]): Promise<FunnelStepResult[]> {
+async function fetchFunnel(
+  steps: string[],
+  startDate: string,
+  endDate: string,
+): Promise<FunnelStepResult[]> {
   const clean = steps.filter(Boolean);
   if (clean.length < 2) return [];
 
   const { alpha, property } = await getGaContext();
   const [res] = await alpha.runFunnelReport({
     property,
-    dateRanges: [{ startDate: DEFAULT_START, endDate: DEFAULT_END }],
+    dateRanges: [{ startDate, endDate }],
     funnel: {
       isOpenFunnel: false,
       steps: clean.map((name) => ({
@@ -673,4 +677,52 @@ export async function runFunnel(steps: string[]): Promise<FunnelStepResult[]> {
     })
     .sort((a, b) => a.order - b.order)
     .map(({ name, users }) => ({ name, users }));
+}
+
+type FunnelCacheEntry = { value: FunnelStepResult[]; expiresAt: number };
+// Same in-memory-only caveats as analyticsCache (see above).
+const funnelCache = new Map<string, FunnelCacheEntry>();
+
+/**
+ * Cached wrapper around fetchFunnel — same TTL-by-preset strategy as
+ * getAnalytics, keyed by user + steps + date range, so switching a funnel's
+ * date range (or reopening the same one) doesn't re-hit the GA4 quota.
+ * Defaults to the last 30 days when no range is given (unscoped call sites).
+ */
+export async function runFunnel(
+  steps: string[],
+  startDate: string = DEFAULT_START,
+  endDate: string = DEFAULT_END,
+  preset: RangePreset = "30d",
+): Promise<FunnelStepResult[]> {
+  const clean = steps.filter(Boolean);
+  if (clean.length < 2) return [];
+
+  const { userId } = await auth();
+  if (!userId) throw new NotConnectedError();
+
+  const key = `${userId}:${clean.join(",")}:${startDate}:${endDate}`;
+  const now = Date.now();
+  const cached = funnelCache.get(key);
+  if (cached) {
+    if (cached.expiresAt > now) {
+      const remaining = Math.round((cached.expiresAt - now) / 1000);
+      console.log(`[GA funnel cache] HIT  ${key} (preset=${preset}, expires in ${remaining}s)`);
+      return cached.value;
+    }
+    console.log(`[GA funnel cache] EXPIRED ${key} (preset=${preset}) — refetching`);
+    funnelCache.delete(key);
+  } else {
+    console.log(`[GA funnel cache] MISS ${key} (preset=${preset}) — refetching`);
+  }
+
+  console.log(`[GA] fetching funnel from GA4 API: startDate=${startDate} endDate=${endDate}`);
+  const t0 = Date.now();
+  const value = await fetchFunnel(clean, startDate, endDate);
+  console.log(`[GA] fetched funnel from GA4 API in ${Date.now() - t0}ms: ${key}`);
+
+  const ttl = ANALYTICS_TTL_MS[preset];
+  funnelCache.set(key, { value, expiresAt: now + ttl });
+  console.log(`[GA funnel cache] STORED ${key} (preset=${preset}, ttl=${Math.round(ttl / 1000)}s)`);
+  return value;
 }

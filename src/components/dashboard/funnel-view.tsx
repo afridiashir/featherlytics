@@ -8,7 +8,7 @@ export function FunnelView({ results }: { results: FunnelStepResult[] }) {
   if (results.length === 0) {
     return (
       <p className="py-4 text-sm text-muted-foreground">
-        No data for this funnel in the last 30 days.
+        No data for this funnel in the selected date range.
       </p>
     );
   }
