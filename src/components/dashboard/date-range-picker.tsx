@@ -26,7 +26,15 @@ function toIso(d: Date): string {
   ).padStart(2, "0")}`;
 }
 
-export function DateRangePicker() {
+export function DateRangePicker({
+  /**
+   * Show the realtime "Live" preset. Off by default — only the dashboard has
+   * a realtime view; funnels have no GA4 realtime equivalent.
+   */
+  includeLive = false,
+}: {
+  includeLive?: boolean;
+} = {}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -40,6 +48,10 @@ export function DateRangePicker() {
     from: searchParams.get("from") ?? undefined,
     to: searchParams.get("to") ?? undefined,
   });
+
+  const presets = includeLive
+    ? RANGE_PRESETS
+    : RANGE_PRESETS.filter((p) => p.value !== "live");
 
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<CalendarRange | undefined>(
@@ -77,7 +89,7 @@ export function DateRangePicker() {
         pending ? "opacity-70" : ""
       }`}
     >
-      {RANGE_PRESETS.map((p) => {
+      {presets.map((p) => {
         const active = current.preset === p.value;
         if (p.value === "custom") {
           return (
@@ -128,9 +140,18 @@ export function DateRangePicker() {
             className="gap-1.5"
             onClick={() => applyPreset(p.value)}
           >
-            {active && pending && (
+            {active && pending ? (
               <Loader2 className="size-3.5 animate-spin" aria-hidden />
-            )}
+            ) : p.value === "live" ? (
+              <span className="relative flex size-1.5" aria-hidden>
+                <span
+                  className={`absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75 ${
+                    active ? "animate-ping" : ""
+                  }`}
+                />
+                <span className="relative inline-flex size-1.5 rounded-full bg-emerald-500" />
+              </span>
+            ) : null}
             {p.label}
           </Button>
         );

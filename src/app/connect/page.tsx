@@ -92,9 +92,17 @@ export default async function ConnectPage({
               </div>
 
               {listError ? (
-                <p className="text-sm text-muted-foreground">
-                  Couldn&apos;t load properties: {listError}
-                </p>
+                <div className="flex flex-col items-start gap-3">
+                  <p className="text-sm text-muted-foreground">
+                    Couldn&apos;t load properties: {listError}
+                  </p>
+                  <Button asChild size="sm" className="gap-2">
+                    <a href="/api/ga/connect">
+                      <Link2 className="size-4" aria-hidden />
+                      Reconnect Google Analytics
+                    </a>
+                  </Button>
+                </div>
               ) : (
                 <PropertyPicker properties={properties} current={conn.propertyId} />
               )}

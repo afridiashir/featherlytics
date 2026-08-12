@@ -1,15 +1,22 @@
 import { redirect } from "next/navigation";
 import { currentUser } from "@clerk/nextjs/server";
-import { AlertTriangle, Clock, Eye, MousePointerClick, Users } from "lucide-react";
+import { AlertTriangle, Clock, Eye, MousePointerClick, Users, Zap } from "lucide-react";
 
 import { AppHeader } from "@/components/dashboard/app-header";
 import { DateRangePicker } from "@/components/dashboard/date-range-picker";
 import { GoalsCard } from "@/components/dashboard/goals-card";
+import { LiveRefresher } from "@/components/dashboard/live-refresher";
 import { TabbedBarCard } from "@/components/dashboard/tabbed-bar-card";
 import { StatTile } from "@/components/dashboard/stat-tile";
 import { VisitorsChart } from "@/components/dashboard/visitors-chart";
 import { resolveDateRange } from "@/lib/date-range";
-import { getAnalytics, NotConnectedError, type Analytics } from "@/lib/ga";
+import {
+  getAnalytics,
+  getRealtime,
+  NotConnectedError,
+  type Analytics,
+  type Realtime,
+} from "@/lib/ga";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Dashboard · Featherlytics" };
@@ -22,11 +29,17 @@ export default async function DashboardPage({
   const user = await currentUser();
   const params = await searchParams;
   const range = resolveDateRange(params);
+  const isLive = range.preset === "live";
 
   let data: Analytics | null = null;
+  let live: Realtime | null = null;
   let error: string | null = null;
   try {
-    data = await getAnalytics(range.startDate, range.endDate, range.days, range.preset);
+    if (isLive) {
+      live = await getRealtime();
+    } else {
+      data = await getAnalytics(range.startDate, range.endDate, range.days, range.preset);
+    }
   } catch (e) {
     if (e instanceof NotConnectedError) redirect("/connect");
     error = e instanceof Error ? e.message : "Failed to load analytics";
@@ -45,12 +58,21 @@ export default async function DashboardPage({
             <h1 className="text-2xl font-bold tracking-tight">
               {greetingName ? `Welcome back, ${greetingName}` : "Dashboard"}
             </h1>
-            <p className="text-sm text-muted-foreground">
-              Live analytics for your website
-              {data ? ` · ${data.range.start} – ${data.range.end}` : ""}
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              {isLive ? (
+                <>
+                  Realtime · last 30 minutes
+                  {live && <LiveRefresher fetchedAt={live.fetchedAt} />}
+                </>
+              ) : (
+                <>
+                  Live analytics for your website
+                  {data ? ` · ${data.range.start} – ${data.range.end}` : ""}
+                </>
+              )}
             </p>
           </div>
-          <DateRangePicker />
+          <DateRangePicker includeLive />
         </div>
 
         {error ? (
@@ -62,6 +84,73 @@ export default async function DashboardPage({
                 {error}
               </p>
             </div>
+          </div>
+        ) : live ? (
+          <div className="flex flex-col gap-4">
+            {/* stat tiles — realtime totals for the trailing 30 minutes */}
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+              <StatTile
+                icon={Users}
+                label={live.summary.activeUsers.label}
+                value={live.summary.activeUsers.value}
+              />
+              <StatTile
+                icon={Eye}
+                label={live.summary.screenPageViews.label}
+                value={live.summary.screenPageViews.value}
+              />
+              <StatTile
+                icon={Zap}
+                label={live.summary.eventCount.label}
+                value={live.summary.eventCount.value}
+              />
+            </div>
+
+            {/* per-minute activity */}
+            <VisitorsChart
+              data={live.perMinute}
+              title="Active users"
+              rangeLabel="Last 30 minutes"
+              xUnit="minute"
+              valueNoun="active users"
+            />
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <TabbedBarCard
+                tabs={[
+                  { key: "pages", label: "Pages", items: live.topPages, valueLabel: "Views", empty: "No page views right now" },
+                ]}
+              />
+              <TabbedBarCard
+                valueLabel="Users"
+                tabs={[
+                  { key: "countries", label: "Countries", items: live.countries, empty: "No country data right now" },
+                  { key: "cities", label: "City", items: live.cities, empty: "No city data right now" },
+                ]}
+              />
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <TabbedBarCard
+                valueLabel="Users"
+                tabs={[
+                  { key: "device", label: "Device", items: live.devices, iconKind: "device", empty: "No device data right now" },
+                ]}
+              />
+              <TabbedBarCard
+                tabs={[
+                  { key: "events", label: "Events", items: live.events, valueLabel: "Count", empty: "No events right now" },
+                ]}
+              />
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Realtime reporting covers a smaller set of dimensions than the
+              dated reports — bounce rate, visit duration, referrers and
+              entry/exit pages aren&apos;t available live, and pages are
+              reported by title rather than path. Pick a date range above for
+              the full breakdown.
+            </p>
           </div>
         ) : data ? (
           <div className="flex flex-col gap-4">

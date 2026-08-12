@@ -1,4 +1,11 @@
-export type RangePreset = "today" | "7d" | "30d" | "custom";
+export type RangePreset = "live" | "today" | "7d" | "30d" | "custom";
+
+/**
+ * "live" is served by the GA4 Realtime API (last 30 minutes) rather than the
+ * standard reporting API, so it has no meaningful start/end date. The dates
+ * below are only a fallback for callers that ignore the preset and pass the
+ * range straight to a dated report (e.g. funnels, which have no realtime API).
+ */
 
 export type ResolvedRange = {
   preset: RangePreset;
@@ -41,7 +48,7 @@ function formatDisplay(iso: string): string {
 
 /**
  * Resolve the active date range from URL search params:
- *   ?range=today | 7d | 30d | custom
+ *   ?range=live | today | 7d | 30d | custom
  *   ?from=YYYY-MM-DD&to=YYYY-MM-DD   (only used when range=custom)
  * Falls back to the last 30 days for anything missing or invalid.
  */
@@ -51,10 +58,20 @@ export function resolveDateRange(searchParams: {
   to?: string;
 }): ResolvedRange {
   const preset = (
-    ["today", "7d", "30d", "custom"] as const
+    ["live", "today", "7d", "30d", "custom"] as const
   ).includes(searchParams.range as RangePreset)
     ? (searchParams.range as RangePreset)
     : "30d";
+
+  if (preset === "live") {
+    return {
+      preset,
+      startDate: "today",
+      endDate: "today",
+      days: 1,
+      label: "Last 30 minutes",
+    };
+  }
 
   if (preset === "today") {
     return {
@@ -102,6 +119,7 @@ export function resolveDateRange(searchParams: {
 }
 
 export const RANGE_PRESETS: { value: RangePreset; label: string }[] = [
+  { value: "live", label: "Live" },
   { value: "today", label: "Today" },
   { value: "7d", label: "7D" },
   { value: "30d", label: "30D" },

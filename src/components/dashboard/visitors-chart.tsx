@@ -34,10 +34,15 @@ export function VisitorsChart({
   data,
   title = "Visitors",
   rangeLabel,
+  /** what one point on the x-axis represents — a day, or a minute in Live mode */
+  xUnit = "day",
+  valueNoun = "visitors",
 }: {
   data: TimePoint[];
   title?: string;
   rangeLabel?: string;
+  xUnit?: "day" | "minute";
+  valueNoun?: string;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<number | null>(null);
@@ -101,13 +106,15 @@ export function VisitorsChart({
       <div className="mb-3 text-2xl font-semibold tabular-nums tracking-tight">
         {formatNumber(peak ? peak.value : 0)}
         <span className="ml-2 text-xs font-normal text-muted-foreground">
-          peak / day
+          peak / {xUnit}
         </span>
       </div>
 
       {!hasData ? (
         <div className="flex h-[180px] items-center justify-center text-sm text-muted-foreground">
-          No visitor data in this range yet.
+          {xUnit === "minute"
+            ? "No activity in the last 30 minutes."
+            : "No visitor data in this range yet."}
         </div>
       ) : (
         <svg
@@ -115,7 +122,7 @@ export function VisitorsChart({
           viewBox={`0 0 ${W} ${H}`}
           className="h-auto w-full touch-none"
           role="img"
-          aria-label={`${title} over time, ${data.length} days`}
+          aria-label={`${title} over time, ${data.length} ${xUnit}s`}
           onPointerMove={(e) => setHover(nearestIndex(e.clientX))}
           onPointerDown={(e) => setHover(nearestIndex(e.clientX))}
           onPointerLeave={() => setHover(null)}
@@ -215,7 +222,7 @@ export function VisitorsChart({
                   textAnchor="middle"
                   className="fill-foreground text-[13px] font-semibold tabular-nums"
                 >
-                  {formatNumber(active.point.value)} visitors
+                  {formatNumber(active.point.value)} {valueNoun}
                 </text>
               </g>
             </>

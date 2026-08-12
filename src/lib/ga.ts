@@ -39,17 +39,30 @@ const MIN = 60_000;
 // slower and can be cached longer. Anything else (custom ranges) falls back
 // to the "today" TTL to stay conservative.
 const ANALYTICS_TTL_MS: Record<RangePreset, number> = {
+  // "live" only applies to dated reports that have no realtime equivalent
+  // (funnels) — the realtime dashboard itself uses REALTIME_TTL_MS below.
+  live: 5 * MIN,
   today: 30 * MIN,
   "7d": 3 * 60 * MIN,
   "30d": 6 * 60 * MIN,
   custom: 30 * MIN,
 };
 
+// Realtime is meant to look live, so it's cached only long enough to absorb
+// rapid reloads. The dashboard polls once a minute; each poll costs six
+// realtime reports, and GA4 meters realtime requests against a separate
+// (small) hourly token bucket per property, so don't shorten this much.
+const REALTIME_TTL_MS = 30_000;
+
 type CacheEntry = { value: Analytics; expiresAt: number };
 // In-memory only — resets on process restart and isn't shared across
 // multiple server instances. Fine for a single Node process; swap for a
 // shared store (Redis, etc.) if this ever runs as multiple replicas.
 const analyticsCache = new Map<string, CacheEntry>();
+
+type RealtimeCacheEntry = { value: Realtime; expiresAt: number };
+// Same in-memory-only caveats as analyticsCache.
+const realtimeCache = new Map<string, RealtimeCacheEntry>();
 
 /**
  * Resolve the GA clients + property for the current request from the signed-in
@@ -615,6 +628,184 @@ export async function getAnalytics(
   const ttl = ANALYTICS_TTL_MS[preset];
   analyticsCache.set(key, { value, expiresAt: now + ttl });
   console.log(`[GA cache] STORED ${key} (preset=${preset}, ttl=${Math.round(ttl / 1000)}s)`);
+  return value;
+}
+
+/* ------------------------------------------------------------------ */
+/* Realtime ("Live" range)                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Snapshot of the GA4 Realtime API (the trailing 30 minutes).
+ *
+ * Realtime supports a much smaller schema than the standard reports — there
+ * are no sessions, so no bounce rate, session duration, referrers or
+ * entry/exit pages, and pages come back as screen names rather than paths.
+ * This type only carries what realtime can actually answer.
+ */
+export type Realtime = {
+  /** epoch ms this snapshot was fetched — drives the "updated Ns ago" label */
+  fetchedAt: number;
+  summary: {
+    activeUsers: Metric;
+    screenPageViews: Metric;
+    eventCount: Metric;
+  };
+  /** one point per minute for the last 30 minutes, oldest first */
+  perMinute: TimePoint[];
+  topPages: BarItem[];
+  countries: BarItem[];
+  cities: BarItem[];
+  devices: BarItem[];
+  events: BarItem[];
+};
+
+/** Trailing window the Realtime API reports on (its maximum for standard properties). */
+const REALTIME_MINUTES = 30;
+
+/** Sum a multi-dimension realtime result down to one dimension index. */
+function collapseTo(
+  rows: { dimensionValues?: ({ value?: string | null } | null)[] | null; metricValues?: ({ value?: string | null } | null)[] | null }[],
+  dimensionIndex: number,
+  fallback: string,
+  limit = 8,
+): { label: string; value: number }[] {
+  const totals = new Map<string, number>();
+  for (const row of rows) {
+    const label = row.dimensionValues?.[dimensionIndex]?.value || fallback;
+    const value = Number(row.metricValues?.[0]?.value ?? 0);
+    totals.set(label, (totals.get(label) ?? 0) + value);
+  }
+  return [...totals.entries()]
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, limit);
+}
+
+const fetchRealtime = cache(async (): Promise<Realtime> => {
+  const { data: client, property } = await getGaContext();
+
+  const [
+    [summaryRes],
+    [minutesRes],
+    [pagesRes],
+    [geoRes],
+    [devicesRes],
+    [eventsRes],
+  ] = await Promise.all([
+    client.runRealtimeReport({
+      property,
+      metrics: [
+        { name: "activeUsers" },
+        { name: "screenPageViews" },
+        { name: "eventCount" },
+      ],
+    }),
+    client.runRealtimeReport({
+      property,
+      dimensions: [{ name: "minutesAgo" }],
+      metrics: [{ name: "activeUsers" }],
+    }),
+    client.runRealtimeReport({
+      property,
+      // Realtime has no pagePath — unifiedScreenName is the page title.
+      dimensions: [{ name: "unifiedScreenName" }],
+      metrics: [{ name: "screenPageViews" }],
+      orderBys: [{ metric: { metricName: "screenPageViews" }, desc: true }],
+      limit: 8,
+    }),
+    // Country and city come from one report and are collapsed apart below —
+    // two tabs for the price of a single realtime token.
+    client.runRealtimeReport({
+      property,
+      dimensions: [{ name: "country" }, { name: "city" }],
+      metrics: [{ name: "activeUsers" }],
+      orderBys: [{ metric: { metricName: "activeUsers" }, desc: true }],
+      limit: 100,
+    }),
+    client.runRealtimeReport({
+      property,
+      dimensions: [{ name: "deviceCategory" }],
+      metrics: [{ name: "activeUsers" }],
+      orderBys: [{ metric: { metricName: "activeUsers" }, desc: true }],
+      limit: 8,
+    }),
+    client.runRealtimeReport({
+      property,
+      dimensions: [{ name: "eventName" }],
+      metrics: [{ name: "eventCount" }],
+      orderBys: [{ metric: { metricName: "eventCount" }, desc: true }],
+      limit: 8,
+    }),
+  ]);
+
+  const m = (i: number) => Number(summaryRes.rows?.[0]?.metricValues?.[i]?.value ?? 0);
+
+  // minutesAgo is "00" (the current minute) … "29" — fill every bucket so the
+  // chart keeps a stable 30-point width even when a minute saw no traffic.
+  const byMinute = new Map<number, number>();
+  for (const row of minutesRes.rows ?? []) {
+    const ago = Number(row.dimensionValues?.[0]?.value ?? -1);
+    if (Number.isNaN(ago) || ago < 0) continue;
+    byMinute.set(ago, Number(row.metricValues?.[0]?.value ?? 0));
+  }
+  const perMinute: TimePoint[] = Array.from(
+    { length: REALTIME_MINUTES },
+    (_, i) => {
+      const ago = REALTIME_MINUTES - 1 - i;
+      return {
+        date: `${ago}m`,
+        label: ago === 0 ? "now" : `${ago}m ago`,
+        value: byMinute.get(ago) ?? 0,
+      };
+    },
+  );
+
+  return {
+    fetchedAt: Date.now(),
+    summary: {
+      activeUsers: { label: "Active users", value: formatNumber(m(0)) },
+      screenPageViews: { label: "Page views", value: formatNumber(m(1)) },
+      eventCount: { label: "Events", value: formatNumber(m(2)) },
+    },
+    perMinute,
+    topPages: toBarList(collapseTo(pagesRes.rows ?? [], 0, "(not set)")),
+    countries: toBarList(collapseTo(geoRes.rows ?? [], 0, "(unknown)")),
+    cities: toBarList(collapseTo(geoRes.rows ?? [], 1, "(unknown)")),
+    devices: toBarList(
+      collapseTo(devicesRes.rows ?? [], 0, "(unknown)").map((r) => ({
+        ...r,
+        label: titleCase(r.label),
+      })),
+    ),
+    events: toBarList(collapseTo(eventsRes.rows ?? [], 0, "(unknown)")),
+  };
+});
+
+/**
+ * Fetch the realtime snapshot, reusing a very recent one when there is a
+ * fresh one (see REALTIME_TTL_MS) so a burst of reloads doesn't spend the
+ * property's realtime quota.
+ */
+export async function getRealtime(): Promise<Realtime> {
+  const { userId } = await auth();
+  if (!userId) throw new NotConnectedError();
+
+  const key = `${userId}:realtime`;
+  const now = Date.now();
+  const cached = realtimeCache.get(key);
+  if (cached && cached.expiresAt > now) {
+    const remaining = Math.round((cached.expiresAt - now) / 1000);
+    console.log(`[GA realtime cache] HIT  ${key} (expires in ${remaining}s)`);
+    return cached.value;
+  }
+
+  console.log(`[GA] fetching realtime from GA4 API (last ${REALTIME_MINUTES}m)`);
+  const t0 = Date.now();
+  const value = await fetchRealtime();
+  console.log(`[GA] fetched realtime from GA4 API in ${Date.now() - t0}ms`);
+
+  realtimeCache.set(key, { value, expiresAt: now + REALTIME_TTL_MS });
   return value;
 }
 
